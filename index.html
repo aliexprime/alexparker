@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Alex Parker</title>
+  <meta name="description" content="Alex Parker">
+  <style>
+    :root {
+      --bg: #f7f6f3;
+      --text: #171717;
+      --muted: rgba(23, 23, 23, 0.45);
+      --muted-2: rgba(23, 23, 23, 0.25);
+      --line-base: rgba(0, 0, 0, 0.05);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: geometricPrecision;
+      overflow: hidden;
+    }
+
+    body {
+      min-height: 100vh;
+    }
+
+    .page {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px 20px 32px;
+      position: relative;
+    }
+
+    .header {
+      position: fixed;
+      inset: 0 0 auto 0;
+      z-index: 10;
+      pointer-events: none;
+    }
+
+    .header-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 24px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      pointer-events: none;
+    }
+
+    .brand,
+    .contact,
+    .footer-label {
+      font-size: 10px;
+      line-height: 1;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .brand { color: var(--muted); }
+    .contact {
+      color: var(--muted-2);
+      pointer-events: auto;
+      transition: color 180ms ease;
+    }
+    .contact:hover { color: var(--text); }
+
+    .hero {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      min-height: 0;
+    }
+
+    .viz-wrap {
+      width: min(100%, 1100px);
+      height: clamp(180px, 36vw, 420px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    svg.chart {
+      width: min(1100px, 100vw - 48px);
+      height: auto;
+      overflow: visible;
+      display: block;
+      transform: translateZ(0);
+    }
+
+    .footer {
+      position: relative;
+      z-index: 2;
+      border-top: 1px solid rgba(0, 0, 0, 0.08);
+      padding-top: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .footer-label {
+      color: var(--muted-2);
+      user-select: none;
+    }
+
+    #activeTrail {
+      animation: trailScale 20s ease-in-out infinite;
+      transform-origin: center;
+      will-change: transform;
+    }
+
+    @keyframes drift {
+      0%   { transform: translate3d(0, 0, 0); }
+      50%  { transform: translate3d(0, -4px, 0); }
+      100% { transform: translate3d(0, 0, 0); }
+    }
+
+    @keyframes trailScale {
+      0%   { transform: scale(1); }
+      50%  { transform: scale(1.01); }
+      100% { transform: scale(1); }
+    }
+
+    .viz-wrap {
+      animation: drift 20s ease-in-out infinite;
+    }
+
+    @media (min-width: 768px) {
+      .page { padding: 36px 48px 48px; }
+      .header-inner { padding: 32px 48px; }
+      .brand, .contact, .footer-label { font-size: 11px; letter-spacing: 0.32em; }
+      .footer { padding-top: 32px; }
+      svg.chart { width: min(1100px, 100vw - 140px); }
+    }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="header-inner">
+      <div class="brand">Alex Parker</div>
+      <a class="contact" href="mailto:hello@alexparker.au">Contact</a>
+    </div>
+  </header>
+
+  <main class="page">
+    <section class="hero" aria-label="Landing page visual">
+      <div class="viz-wrap">
+        <svg class="chart" viewBox="-120 -260 2600 620" role="img" aria-label="Animated line visual">
+          <defs>
+            <linearGradient id="dragonFade" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="rgba(0,0,0,0)"/>
+              <stop offset="18%" stop-color="rgba(0,0,0,0.08)"/>
+              <stop offset="55%" stop-color="rgba(0,0,0,0.26)"/>
+              <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
+            </linearGradient>
+          </defs>
+
+          <path
+            d="M 0 0
+            L 24 0
+            L 24 48
+            L 56 48
+            L 56 -12
+            L 92 -12
+            L 92 72
+            L 126 72
+            L 126 18
+            L 168 18
+            L 168 104
+            L 204 104
+            L 204 34
+            L 248 34
+            L 248 -52
+            L 286 -52
+            L 286 12
+            L 330 12
+            L 330 -88
+            L 370 -88
+            L 370 -8
+            L 418 -8
+            L 418 86
+            L 462 86
+            L 462 10
+            L 510 10
+            L 510 136
+            L 552 136
+            L 552 28
+            L 604 28
+            L 604 -76
+            L 648 -76
+            L 648 8
+            L 700 8
+            L 700 -118
+            L 746 -118
+            L 746 -22
+            L 798 -22
+            L 798 74
+            L 844 74
+            L 844 -6
+            L 896 -6
+            L 896 128
+            L 942 128
+            L 942 16
+            L 998 16
+            L 998 -96
+            L 1046 -96
+            L 1046 -4
+            L 1100 -4
+            L 1100 -142
+            L 1148 -142
+            L 1148 -34
+            L 1204 -34
+            L 1204 98
+            L 1252 98
+            L 1252 -12
+            L 1308 -12
+            L 1308 156
+            L 1358 156
+            L 1358 26
+            L 1418 26
+            L 1418 -112
+            L 1470 -112
+            L 1470 -8
+            L 1528 -8
+            L 1528 -172
+            L 1580 -172
+            L 1580 -44
+            L 1640 -44
+            L 1640 112
+            L 1692 112
+            L 1692 -14
+            L 1754 -14
+            L 1754 176
+            L 1808 176
+            L 1808 32
+            L 1872 32
+            L 1872 -132
+            L 1928 -132
+            L 1928 -10
+            L 1990 -10
+            L 1990 -198
+            L 2046 -198
+            L 2046 -52
+            L 2110 -52
+            L 2110 126
+            L 2166 126
+            L 2166 -18
+            L 2232 -18
+            L 2232 198
+            L 2290 198
+            L 2290 36
+            L 2358 36"
+            fill="none"
+            stroke="rgba(0,0,0,0.05)"
+            stroke-width="3"
+            stroke-linecap="square"
+            stroke-linejoin="miter"
+          />
+
+          <path
+            id="activeTrail"
+            d="M 0 0
+            L 24 0
+            L 24 48
+            L 56 48
+            L 56 -12
+            L 92 -12
+            L 92 72
+            L 126 72
+            L 126 18
+            L 168 18
+            L 168 104
+            L 204 104
+            L 204 34
+            L 248 34
+            L 248 -52
+            L 286 -52
+            L 286 12
+            L 330 12
+            L 330 -88
+            L 370 -88
+            L 370 -8
+            L 418 -8
+            L 418 86
+            L 462 86
+            L 462 10
+            L 510 10
+            L 510 136
+            L 552 136
+            L 552 28
+            L 604 28
+            L 604 -76
+            L 648 -76
+            L 648 8
+            L 700 8
+            L 700 -118
+            L 746 -118
+            L 746 -22
+            L 798 -22
+            L 798 74
+            L 844 74
+            L 844 -6
+            L 896 -6
+            L 896 128
+            L 942 128
+            L 942 16
+            L 998 16
+            L 998 -96
+            L 1046 -96
+            L 1046 -4
+            L 1100 -4
+            L 1100 -142
+            L 1148 -142
+            L 1148 -34
+            L 1204 -34
+            L 1204 98
+            L 1252 98
+            L 1252 -12
+            L 1308 -12
+            L 1308 156
+            L 1358 156
+            L 1358 26
+            L 1418 26
+            L 1418 -112
+            L 1470 -112
+            L 1470 -8
+            L 1528 -8
+            L 1528 -172
+            L 1580 -172
+            L 1580 -44
+            L 1640 -44
+            L 1640 112
+            L 1692 112
+            L 1692 -14
+            L 1754 -14
+            L 1754 176
+            L 1808 176
+            L 1808 32
+            L 1872 32
+            L 1872 -132
+            L 1928 -132
+            L 1928 -10
+            L 1990 -10
+            L 1990 -198
+            L 2046 -198
+            L 2046 -52
+            L 2110 -52
+            L 2110 126
+            L 2166 126
+            L 2166 -18
+            L 2232 -18
+            L 2232 198
+            L 2290 198
+            L 2290 36
+            L 2358 36"
+            fill="none"
+            stroke="url(#dragonFade)"
+            stroke-width="5.5"
+            stroke-linecap="square"
+          />
+        </svg>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <div class="footer-label">Research</div>
+      <div class="footer-label">Archive</div>
+    </footer>
+  </main>
+
+  <script>
+    (function () {
+      const trail = document.getElementById('activeTrail');
+      if (!trail) return;
+
+      const duration = 20000;
+      const segment = 0.14;
+      let startTime = null;
+
+      function frame(ts) {
+        if (startTime === null) startTime = ts;
+        const elapsed = (ts - startTime) % duration;
+        const progress = elapsed / duration;
+        const offset = progress * 0.86;
+
+        trail.style.strokeDasharray = `${segment} 1`;
+        trail.style.strokeDashoffset = `${-offset}`;
+        trail.style.pathLength = 1;
+
+        requestAnimationFrame(frame);
+      }
+
+      requestAnimationFrame(frame);
+    })();
+  </script>
+</body>
+</html>
