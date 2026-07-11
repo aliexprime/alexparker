@@ -162,17 +162,15 @@
       // total is stored in a single hosted counter; the pile you see IS that
       // number rendered as sand.
       var API = "https://api.counterapi.dev/v2/alexander-parkers-team-4716/first-counter-4716";
-      var SESSION_KEY = "ap_counted";     // avoid re-incrementing on refresh
       var LOCAL_KEY = "ap_count_local";   // offline fallback / last-known value
 
       function fetchCount() {
-        var first = !sessionStorage.getItem(SESSION_KEY);
-        var url = first ? API + "/up" : API; // "/up" increments, base just reads
-
+        // Every page load (including a refresh) increments the counter, so the
+        // pile grows by one grain on each visit.
         var ctrl = new AbortController();
         var timer = setTimeout(function () { ctrl.abort(); }, 4500);
 
-        return fetch(url, { signal: ctrl.signal, cache: "no-store" })
+        return fetch(API + "/up", { signal: ctrl.signal, cache: "no-store" })
           .then(function (r) {
             clearTimeout(timer);
             if (!r.ok) throw new Error("bad status " + r.status);
@@ -183,7 +181,6 @@
             var n = pickNumber([d.up_count, d.value, d.count, j && j.count, j && j.value]);
             if (n === null) throw new Error("no count in response");
             n = Math.max(1, Math.floor(n));
-            if (first) sessionStorage.setItem(SESSION_KEY, "1");
             localStorage.setItem(LOCAL_KEY, String(n));
             return n;
           })
@@ -192,11 +189,8 @@
             // pile still grows and the page never looks broken.
             var n = parseInt(localStorage.getItem(LOCAL_KEY) || "0", 10);
             if (!isFinite(n) || n < 0) n = 0;
-            if (first) {
-              n += 1;
-              localStorage.setItem(LOCAL_KEY, String(n));
-              sessionStorage.setItem(SESSION_KEY, "1");
-            }
+            n += 1;
+            localStorage.setItem(LOCAL_KEY, String(n));
             return Math.max(1, n);
           });
       }
