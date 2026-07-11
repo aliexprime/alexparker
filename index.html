@@ -95,12 +95,12 @@
       position: relative;
     }
 
-    svg.chart {
-      width: min(1100px, 100vw - 48px);
-      height: auto;
-      overflow: visible;
+    canvas.sand {
+      width: 100%;
+      height: 100%;
       display: block;
-      transform: translateZ(0);
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
     }
 
     .footer {
@@ -119,34 +119,11 @@
       user-select: none;
     }
 
-    #activeTrail {
-      animation: trailScale 20s ease-in-out infinite;
-      transform-origin: center;
-      will-change: transform;
-    }
-
-    @keyframes drift {
-      0%   { transform: translate3d(0, 0, 0); }
-      50%  { transform: translate3d(0, -4px, 0); }
-      100% { transform: translate3d(0, 0, 0); }
-    }
-
-    @keyframes trailScale {
-      0%   { transform: scale(1); }
-      50%  { transform: scale(1.01); }
-      100% { transform: scale(1); }
-    }
-
-    .viz-wrap {
-      animation: drift 20s ease-in-out infinite;
-    }
-
     @media (min-width: 768px) {
       .page { padding: 36px 48px 48px; }
       .header-inner { padding: 32px 48px; }
       .brand, .contact, .footer-label { font-size: 11px; letter-spacing: 0.32em; }
       .footer { padding-top: 32px; }
-      svg.chart { width: min(1100px, 100vw - 140px); }
     }
   </style>
 </head>
@@ -161,220 +138,12 @@
   <main class="page">
     <section class="hero" aria-label="Landing page visual">
       <div class="viz-wrap">
-        <svg class="chart" viewBox="-120 -260 2600 620" role="img" aria-label="Animated line visual">
-          <defs>
-            <linearGradient id="dragonFade" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%" stop-color="rgba(0,0,0,0)"/>
-              <stop offset="18%" stop-color="rgba(0,0,0,0.08)"/>
-              <stop offset="55%" stop-color="rgba(0,0,0,0.26)"/>
-              <stop offset="100%" stop-color="rgba(0,0,0,0)"/>
-            </linearGradient>
-          </defs>
-
-          <path
-            d="M 0 0
-            L 24 0
-            L 24 48
-            L 56 48
-            L 56 -12
-            L 92 -12
-            L 92 72
-            L 126 72
-            L 126 18
-            L 168 18
-            L 168 104
-            L 204 104
-            L 204 34
-            L 248 34
-            L 248 -52
-            L 286 -52
-            L 286 12
-            L 330 12
-            L 330 -88
-            L 370 -88
-            L 370 -8
-            L 418 -8
-            L 418 86
-            L 462 86
-            L 462 10
-            L 510 10
-            L 510 136
-            L 552 136
-            L 552 28
-            L 604 28
-            L 604 -76
-            L 648 -76
-            L 648 8
-            L 700 8
-            L 700 -118
-            L 746 -118
-            L 746 -22
-            L 798 -22
-            L 798 74
-            L 844 74
-            L 844 -6
-            L 896 -6
-            L 896 128
-            L 942 128
-            L 942 16
-            L 998 16
-            L 998 -96
-            L 1046 -96
-            L 1046 -4
-            L 1100 -4
-            L 1100 -142
-            L 1148 -142
-            L 1148 -34
-            L 1204 -34
-            L 1204 98
-            L 1252 98
-            L 1252 -12
-            L 1308 -12
-            L 1308 156
-            L 1358 156
-            L 1358 26
-            L 1418 26
-            L 1418 -112
-            L 1470 -112
-            L 1470 -8
-            L 1528 -8
-            L 1528 -172
-            L 1580 -172
-            L 1580 -44
-            L 1640 -44
-            L 1640 112
-            L 1692 112
-            L 1692 -14
-            L 1754 -14
-            L 1754 176
-            L 1808 176
-            L 1808 32
-            L 1872 32
-            L 1872 -132
-            L 1928 -132
-            L 1928 -10
-            L 1990 -10
-            L 1990 -198
-            L 2046 -198
-            L 2046 -52
-            L 2110 -52
-            L 2110 126
-            L 2166 126
-            L 2166 -18
-            L 2232 -18
-            L 2232 198
-            L 2290 198
-            L 2290 36
-            L 2358 36"
-            fill="none"
-            stroke="rgba(0,0,0,0.05)"
-            stroke-width="3"
-            stroke-linecap="square"
-            stroke-linejoin="miter"
-          />
-
-          <path
-            id="activeTrail"
-            d="M 0 0
-            L 24 0
-            L 24 48
-            L 56 48
-            L 56 -12
-            L 92 -12
-            L 92 72
-            L 126 72
-            L 126 18
-            L 168 18
-            L 168 104
-            L 204 104
-            L 204 34
-            L 248 34
-            L 248 -52
-            L 286 -52
-            L 286 12
-            L 330 12
-            L 330 -88
-            L 370 -88
-            L 370 -8
-            L 418 -8
-            L 418 86
-            L 462 86
-            L 462 10
-            L 510 10
-            L 510 136
-            L 552 136
-            L 552 28
-            L 604 28
-            L 604 -76
-            L 648 -76
-            L 648 8
-            L 700 8
-            L 700 -118
-            L 746 -118
-            L 746 -22
-            L 798 -22
-            L 798 74
-            L 844 74
-            L 844 -6
-            L 896 -6
-            L 896 128
-            L 942 128
-            L 942 16
-            L 998 16
-            L 998 -96
-            L 1046 -96
-            L 1046 -4
-            L 1100 -4
-            L 1100 -142
-            L 1148 -142
-            L 1148 -34
-            L 1204 -34
-            L 1204 98
-            L 1252 98
-            L 1252 -12
-            L 1308 -12
-            L 1308 156
-            L 1358 156
-            L 1358 26
-            L 1418 26
-            L 1418 -112
-            L 1470 -112
-            L 1470 -8
-            L 1528 -8
-            L 1528 -172
-            L 1580 -172
-            L 1580 -44
-            L 1640 -44
-            L 1640 112
-            L 1692 112
-            L 1692 -14
-            L 1754 -14
-            L 1754 176
-            L 1808 176
-            L 1808 32
-            L 1872 32
-            L 1872 -132
-            L 1928 -132
-            L 1928 -10
-            L 1990 -10
-            L 1990 -198
-            L 2046 -198
-            L 2046 -52
-            L 2110 -52
-            L 2110 126
-            L 2166 126
-            L 2166 -18
-            L 2232 -18
-            L 2232 198
-            L 2290 198
-            L 2290 36
-            L 2358 36"
-            fill="none"
-            stroke="url(#dragonFade)"
-            stroke-width="5.5"
-            stroke-linecap="square"
-          />
-        </svg>
+        <canvas
+          id="sand"
+          class="sand"
+          role="img"
+          aria-label="A pile of pixel sand, one grain for every visitor to the site"
+        ></canvas>
       </div>
     </section>
 
@@ -386,32 +155,259 @@
 
   <script>
     (function () {
-      const trail = document.getElementById('activeTrail');
-      if (!trail) return;
+      "use strict";
 
-      const duration = 20000;
-      const visibleFraction = 0.14;
-      let startTime = null;
+      // ---- Visitor counter (counterapi.dev v2, public / keyless) --------------
+      // One grain is added to the pile for every visit to the site. The global
+      // total is stored in a single hosted counter; the pile you see IS that
+      // number rendered as sand.
+      var API = "https://api.counterapi.dev/v2/alexander-parkers-team-4716/first-counter-4716";
+      var SESSION_KEY = "ap_counted";     // avoid re-incrementing on refresh
+      var LOCAL_KEY = "ap_count_local";   // offline fallback / last-known value
 
-      const totalLength = trail.getTotalLength();
-      const visibleLength = totalLength * visibleFraction;
-      const gapLength = totalLength;
+      function fetchCount() {
+        var first = !sessionStorage.getItem(SESSION_KEY);
+        var url = first ? API + "/up" : API; // "/up" increments, base just reads
 
-      trail.style.strokeDasharray = `${visibleLength} ${gapLength}`;
-      trail.style.strokeDashoffset = '0';
+        var ctrl = new AbortController();
+        var timer = setTimeout(function () { ctrl.abort(); }, 4500);
 
-      function frame(ts) {
-        if (startTime === null) startTime = ts;
-        const elapsed = (ts - startTime) % duration;
-        const progress = elapsed / duration;
-        const maxTravel = totalLength * 0.86;
-        const offset = progress * maxTravel;
-
-        trail.style.strokeDashoffset = `${-offset}`;
-        requestAnimationFrame(frame);
+        return fetch(url, { signal: ctrl.signal, cache: "no-store" })
+          .then(function (r) {
+            clearTimeout(timer);
+            if (!r.ok) throw new Error("bad status " + r.status);
+            return r.json();
+          })
+          .then(function (j) {
+            var d = (j && j.data) ? j.data : {};
+            var n = pickNumber([d.up_count, d.value, d.count, j && j.count, j && j.value]);
+            if (n === null) throw new Error("no count in response");
+            n = Math.max(1, Math.floor(n));
+            if (first) sessionStorage.setItem(SESSION_KEY, "1");
+            localStorage.setItem(LOCAL_KEY, String(n));
+            return n;
+          })
+          .catch(function () {
+            // Network/API unavailable: fall back to a per-browser tally so the
+            // pile still grows and the page never looks broken.
+            var n = parseInt(localStorage.getItem(LOCAL_KEY) || "0", 10);
+            if (!isFinite(n) || n < 0) n = 0;
+            if (first) {
+              n += 1;
+              localStorage.setItem(LOCAL_KEY, String(n));
+              sessionStorage.setItem(SESSION_KEY, "1");
+            }
+            return Math.max(1, n);
+          });
       }
 
-      requestAnimationFrame(frame);
+      function pickNumber(list) {
+        for (var i = 0; i < list.length; i++) {
+          var v = list[i];
+          if (typeof v === "number" && isFinite(v)) return v;
+        }
+        return null;
+      }
+
+      // ---- Falling-sand cellular automaton ------------------------------------
+      var canvas = document.getElementById("sand");
+      if (!canvas) return;
+      var ctx = canvas.getContext("2d");
+      var wrap = canvas.parentNode;
+
+      var BG = "#f7f6f3";
+      // A few near-black ink tones give the sand a subtle pixel texture while
+      // staying within the site's monochrome palette.
+      var SHADES = ["#1a1a1a", "#262625", "#33322f", "#201f1d"];
+      var CELL = 3;            // size of one sand grain in CSS pixels
+      var STREAM_MAX = 380;    // grains poured as a visible stream (rest are instant)
+      var BUILD_FRAMES = 140;  // ~2.3s pour at 60fps
+
+      var cols = 0, rows = 0, grid = null, sourceX = 0;
+      var cssW = 0, cssH = 0;
+      var reduceMotion = window.matchMedia &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      var live = [];           // grains currently falling through the air
+      var toEmit = 0;          // remaining stream grains to spawn
+      var heroPending = false; // the single grain that represents THIS visitor
+      var rafId = 0;
+      var lastTotal = 1;
+
+      function idx(x, y) { return y * cols + x; }
+      function inX(x) { return x >= 0 && x < cols; }
+      function empty(x, y) { return y < rows && grid[idx(x, y)] === 0; }
+      function shade() { return 1 + (Math.random() * SHADES.length | 0); }
+
+      function initCanvas() {
+        var rect = wrap.getBoundingClientRect();
+        cssW = Math.max(1, Math.floor(rect.width));
+        cssH = Math.max(1, Math.floor(rect.height));
+        var dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+        canvas.width = Math.floor(cssW * dpr);
+        canvas.height = Math.floor(cssH * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.imageSmoothingEnabled = false;
+
+        cols = Math.max(1, Math.floor(cssW / CELL));
+        rows = Math.max(1, Math.floor(cssH / CELL));
+        grid = new Uint8Array(cols * rows);
+        sourceX = Math.floor(cols / 2);
+      }
+
+      // One physics step for a grain: straight down, else tumble down-diagonally.
+      // Returns the next cell to occupy, or null when the grain has come to rest.
+      function nextCell(px, py) {
+        var ny = py + 1;
+        if (ny > rows - 1) return null;            // resting on the floor
+        if (grid[idx(px, ny)] === 0) return { x: px, y: ny };
+        var d = Math.random() < 0.5 ? -1 : 1;      // random slide direction
+        if (inX(px + d) && grid[idx(px + d, ny)] === 0) return { x: px + d, y: ny };
+        if (inX(px - d) && grid[idx(px - d, ny)] === 0) return { x: px - d, y: ny };
+        return null;                               // wedged: settle here
+      }
+
+      // Drop a grain and settle it immediately (used to build the pile's base).
+      function dropInstant() {
+        var px = sourceX + ((Math.random() * 5 | 0) - 2);
+        if (px < 0) px = 0; else if (px >= cols) px = cols - 1;
+        var py = 0;
+        if (grid[idx(px, py)] !== 0) return false; // pile has reached the top
+        for (;;) {
+          var n = nextCell(px, py);
+          if (!n) { grid[idx(px, py)] = shade(); return true; }
+          px = n.x; py = n.y;
+        }
+      }
+
+      function liveAt(x, y) {
+        for (var i = 0; i < live.length; i++) {
+          if (live[i].x === x && live[i].y === y) return true;
+        }
+        return false;
+      }
+
+      function spawnFalling(hero) {
+        // Give the hero grain a head start down the canvas so it lands promptly
+        // after the stream instead of trailing far behind.
+        var startY = hero ? Math.floor(rows * 0.45) : 0;
+        // Find a free starting cell in the source band so no two grains share a
+        // cell; if the band is momentarily full, place the grain exactly instead
+        // of animating it, so the pile total always equals the visitor count.
+        for (var t = 0; t < 6; t++) {
+          var px = sourceX + ((Math.random() * 5 | 0) - 2);
+          if (px < 0) px = 0; else if (px >= cols) px = cols - 1;
+          if (grid[idx(px, startY)] === 0 && !liveAt(px, startY)) {
+            live.push({ x: px, y: startY, c: shade(), steps: 2 });
+            return;
+          }
+        }
+        dropInstant();
+      }
+
+      // Advance every airborne grain. A grain settles only when real sand (the
+      // grid) blocks it; if another airborne grain is in the way it simply waits,
+      // so grains never overlap or pass through each other and none are lost.
+      function updateLive() {
+        live.sort(function (a, b) { return b.y - a.y; }); // lower grains move first
+        var claimed = Object.create(null); // cells held by grains still airborne
+        var next = [];
+        for (var i = 0; i < live.length; i++) {
+          var p = live[i];
+          var settled = false;
+          for (var s = 0; s < p.steps; s++) {
+            var n = nextCell(p.x, p.y);
+            if (!n) { grid[idx(p.x, p.y)] = p.c; settled = true; break; }
+            if (claimed[idx(n.x, n.y)]) break; // blocked by another grain: wait
+            p.x = n.x; p.y = n.y;
+          }
+          if (!settled) { claimed[idx(p.x, p.y)] = 1; next.push(p); }
+        }
+        live = next;
+      }
+
+      function render() {
+        ctx.fillStyle = BG;
+        ctx.fillRect(0, 0, cssW, cssH);
+        var v, x, y, i = 0;
+        for (y = 0; y < rows; y++) {
+          for (x = 0; x < cols; x++, i++) {
+            v = grid[i];
+            if (v !== 0) {
+              ctx.fillStyle = SHADES[v - 1];
+              ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
+            }
+          }
+        }
+        for (i = 0; i < live.length; i++) {
+          var p = live[i];
+          ctx.fillStyle = SHADES[p.c - 1];
+          ctx.fillRect(p.x * CELL, p.y * CELL, CELL, CELL);
+        }
+      }
+
+      function build(total, animate) {
+        lastTotal = total;
+        if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+        live = [];
+
+        // Cap the pile at what the grid can physically hold, so a very large
+        // visitor count stays cheap to render (the pile just reads as "full").
+        var cap = Math.floor(cols * rows * 0.48);
+        var n = Math.min(Math.max(1, total), cap);
+        var pre = Math.max(0, n - 1);              // grains from earlier visitors
+        var streamN = animate ? Math.min(pre, STREAM_MAX) : pre;
+        var bulk = pre - streamN;                  // placed instantly (the base)
+
+        for (var i = 0; i < bulk; i++) dropInstant();
+
+        if (!animate) {
+          for (var j = 0; j < streamN; j++) dropInstant();
+          dropInstant();                           // this visitor's grain
+          render();
+          return;
+        }
+
+        toEmit = streamN;
+        heroPending = true;
+        var emitPerFrame = Math.max(1, Math.ceil(streamN / BUILD_FRAMES));
+
+        function frame() {
+          var e = emitPerFrame;
+          while (e-- > 0 && toEmit > 0) { spawnFalling(false); toEmit--; }
+          if (toEmit === 0 && live.length === 0 && heroPending) {
+            spawnFalling(true);                    // the hero grain drops last
+            heroPending = false;
+          }
+          updateLive();
+          render();
+          if (toEmit > 0 || live.length > 0 || heroPending) {
+            rafId = requestAnimationFrame(frame);
+          } else {
+            rafId = 0;
+            render();
+          }
+        }
+        rafId = requestAnimationFrame(frame);
+      }
+
+      // Rebuild to fit the new size; no pour animation on resize.
+      var resizeTimer = 0;
+      window.addEventListener("resize", function () {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(function () {
+          initCanvas();
+          build(lastTotal, false);
+        }, 200);
+      });
+
+      // ---- Go ------------------------------------------------------------------
+      initCanvas();
+      render(); // paint the empty background immediately while the count loads
+      fetchCount().then(function (total) {
+        build(total, !reduceMotion);
+      });
     })();
   </script>
 </body>
