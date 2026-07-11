@@ -77,6 +77,21 @@
     }
     .contact:hover { color: var(--text); }
 
+    .visitor {
+      position: fixed;
+      top: 24px;
+      left: 0;
+      right: 0;
+      z-index: 11;
+      text-align: center;
+      pointer-events: none;
+      font-size: 10px;
+      line-height: 1;
+      letter-spacing: 0.28em;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
     .hero {
       flex: 1;
       display: flex;
@@ -123,6 +138,7 @@
       .page { padding: 36px 48px 48px; }
       .header-inner { padding: 32px 48px; }
       .brand, .contact, .footer-label { font-size: 11px; letter-spacing: 0.32em; }
+      .visitor { top: 32px; font-size: 11px; letter-spacing: 0.32em; }
       .footer { padding-top: 32px; }
     }
   </style>
@@ -134,6 +150,8 @@
       <a class="contact" href="mailto:hello@alexparker.au">Contact</a>
     </div>
   </header>
+
+  <div class="visitor" id="counter" aria-label="Visitor count">0</div>
 
   <main class="page">
     <section class="hero" aria-label="Landing page visual">
@@ -227,6 +245,12 @@
       var heroPending = false; // the single grain that represents THIS visitor
       var rafId = 0;
       var lastTotal = 1;
+      var landed = 0;          // animated grains that have come to rest this pour
+
+      var counterEl = document.getElementById("counter");
+      function setCounter(n) {
+        if (counterEl) counterEl.textContent = Math.round(n).toLocaleString();
+      }
 
       function idx(x, y) { return y * cols + x; }
       function inX(x) { return x >= 0 && x < cols; }
@@ -297,7 +321,7 @@
             return;
           }
         }
-        dropInstant();
+        if (dropInstant()) landed++; // band was full: place it exactly, still counts
       }
 
       // Advance every airborne grain. A grain settles only when real sand (the
@@ -312,7 +336,7 @@
           var settled = false;
           for (var s = 0; s < p.steps; s++) {
             var n = nextCell(p.x, p.y);
-            if (!n) { grid[idx(p.x, p.y)] = p.c; settled = true; break; }
+            if (!n) { grid[idx(p.x, p.y)] = p.c; landed++; settled = true; break; }
             if (claimed[idx(n.x, n.y)]) break; // blocked by another grain: wait
             p.x = n.x; p.y = n.y;
           }
@@ -343,6 +367,7 @@
 
       function build(total, animate) {
         lastTotal = total;
+        landed = 0;
         if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
         live = [];
 
@@ -360,12 +385,18 @@
           for (var j = 0; j < streamN; j++) dropInstant();
           dropInstant();                           // this visitor's grain
           render();
+          setCounter(total);
           return;
         }
 
         toEmit = streamN;
         heroPending = true;
         var emitPerFrame = Math.max(1, Math.ceil(streamN / BUILD_FRAMES));
+        // The tally climbs 0 -> total in step with the grains that actually
+        // land, so it finishes at the exact moment the last grain settles:
+        // however long the pour takes is how long the number tweens.
+        var landTarget = streamN + 1;
+        setCounter(0);
 
         function frame() {
           var e = emitPerFrame;
@@ -377,10 +408,12 @@
           updateLive();
           render();
           if (toEmit > 0 || live.length > 0 || heroPending) {
+            setCounter(total * Math.min(1, landed / landTarget));
             rafId = requestAnimationFrame(frame);
           } else {
             rafId = 0;
             render();
+            setCounter(total);                     // snap to the exact total
           }
         }
         rafId = requestAnimationFrame(frame);
