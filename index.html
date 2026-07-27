@@ -61,7 +61,7 @@
     .visitor,
     .hint,
     .eyebrow,
-    .panel-close,
+    .sheet-close,
     .item-tag {
       font-size: 10px;
       line-height: 1;
@@ -117,208 +117,72 @@
       text-shadow: 0 0 5px var(--bg), 0 0 10px var(--bg), 0 0 16px var(--bg);
     }
     body.loaded .hint { opacity: 1; }
-    body.touched .hint, body.panel-open .hint { opacity: 0; }
+    body.touched .hint, body.form-open .hint { opacity: 0; }
 
-    /* ---- Panel ---------------------------------------------------------- */
+    /* ---- The message form ------------------------------------------------
 
-    .panel {
+       The only HTML the site has left. Everything else a visitor reads is
+       printed into the world in the pixel font — you just cannot type into a
+       mesh, so this one thing is a dialog. */
+
+    .dialog {
       position: fixed;
+      inset: 0;
       z-index: 30;
-      background: var(--sheet);
       display: flex;
-      flex-direction: column;
-      overflow: hidden;
-      transition: transform 520ms cubic-bezier(0.16, 1, 0.3, 1), opacity 320ms ease;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(247, 246, 243, 0.72);
+      backdrop-filter: blur(3px);
+      -webkit-backdrop-filter: blur(3px);
       opacity: 0;
       pointer-events: none;
+      transition: opacity 220ms ease;
     }
-    body.panel-open .panel { opacity: 1; pointer-events: auto; }
+    body.form-open .dialog { opacity: 1; pointer-events: auto; }
 
-    @media (min-width: 861px) {
-      .panel {
-        top: 0;
-        right: 0;
-        bottom: 0;
-        width: min(430px, 40vw);
-        border-left: 1px solid var(--hair);
-        transform: translateX(100%);
-      }
-      body.panel-open .panel { transform: translateX(0); }
+    .sheet {
+      width: min(460px, 100%);
+      max-height: 100%;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      background: var(--sheet);
+      border: 2px solid var(--text);
+      /* A hard offset instead of a soft shadow — the whole site is square. */
+      box-shadow: 8px 8px 0 rgba(23, 23, 23, 0.16);
+      padding: 26px 26px calc(26px + env(safe-area-inset-bottom));
+      transform: translateY(10px) scale(0.98);
+      transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
     }
-    @media (max-width: 860px) {
-      .panel {
-        left: 0;
-        right: 0;
-        bottom: 0;
-        max-height: 58vh;
-        border-top: 1px solid var(--hair);
-        transform: translateY(100%);
-      }
-      body.panel-open .panel { transform: translateY(0); }
-    }
+    body.form-open .sheet { transform: none; }
 
-    .panel-head {
+    .sheet-head {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
       gap: 16px;
-      padding: calc(26px + env(safe-area-inset-top)) 28px 0;
-      flex: 0 0 auto;
     }
-    @media (max-width: 860px) {
-      .panel-head { padding: 22px 22px 0; }
-    }
-
-    .eyebrow { color: var(--muted-2); }
-
-    .panel-close {
+    .sheet-close {
       appearance: none;
       -webkit-appearance: none;
       background: none;
       border: 0;
-      padding: 4px 0 4px 12px;
+      padding: 2px 0 2px 12px;
       cursor: pointer;
       color: var(--muted);
       font-family: inherit;
       transition: color 180ms ease;
     }
-    .panel-close:hover { color: var(--text); }
+    .sheet-close:hover { color: var(--text); }
 
-    .panel-body {
-      padding: 20px 28px calc(36px + env(safe-area-inset-bottom));
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-      flex: 1 1 auto;
-    }
-    @media (max-width: 860px) {
-      .panel-body { padding: 16px 22px calc(28px + env(safe-area-inset-bottom)); }
-    }
-
-    .panel-title {
-      font-size: 30px;
-      line-height: 1.1;
+    .sheet-title {
+      font-size: 24px;
+      line-height: 1.15;
       letter-spacing: -0.02em;
       font-weight: 500;
       margin: 14px 0 0;
     }
-    .panel-lede {
-      font-size: 15px;
-      line-height: 1.6;
-      color: rgba(23, 23, 23, 0.72);
-      margin: 16px 0 0;
-    }
-    .panel-body p {
-      font-size: 14px;
-      line-height: 1.68;
-      color: rgba(23, 23, 23, 0.62);
-      margin: 14px 0 0;
-    }
-
-    .items { margin: 30px 0 0; border-top: 1px solid var(--hair); }
-    .item {
-      padding: 15px 0;
-      border-bottom: 1px solid var(--hair);
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 4px 16px;
-      align-items: baseline;
-    }
-    .item-name {
-      font-size: 14px;
-      line-height: 1.35;
-      color: var(--text);
-    }
-    .item-name a {
-      color: inherit;
-      text-decoration: none;
-      border-bottom: 1px solid rgba(23, 23, 23, 0.22);
-      transition: border-color 180ms ease;
-    }
-    .item-name a:hover { border-bottom-color: var(--text); }
-
-    .item-tag { color: var(--muted-2); }
-    .item-note {
-      grid-column: 1 / -1;
-      font-size: 13px;
-      line-height: 1.6;
-      color: rgba(23, 23, 23, 0.55);
-    }
-
-    .todo {
-      margin-top: 30px;
-      padding: 12px 14px;
-      border: 1px dashed rgba(23, 23, 23, 0.18);
-      font-size: 12px;
-      line-height: 1.6;
-      color: var(--muted);
-    }
-
-
-    /* ---- Pages, and the turn between them ------------------------------- */
-
-    .page {
-      transform-origin: left center;
-      backface-visibility: hidden;
-    }
-    body.turning .page {
-      transition: transform 220ms ease-in, opacity 200ms ease-in;
-      transform: rotateY(-72deg);
-      opacity: 0;
-    }
-    .page.arriving {
-      animation: pageIn 260ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-    }
-    @keyframes pageIn {
-      from { transform: rotateY(58deg); opacity: 0; }
-      to   { transform: rotateY(0deg); opacity: 1; }
-    }
-    #panelBody { perspective: 1400px; }
-
-    .page-back {
-      appearance: none;
-      -webkit-appearance: none;
-      background: none;
-      border: 0;
-      padding: 0 0 14px;
-      cursor: pointer;
-      color: var(--muted);
-      font-family: inherit;
-      font-size: 10px;
-      letter-spacing: 0.28em;
-      text-transform: uppercase;
-      transition: color 180ms ease;
-    }
-    .page-back:hover { color: var(--text); }
-
-    /* ---- Choices (the lines on the chart) -------------------------------- */
-
-    .choices:not(:empty) { margin: 26px 0 0; border-top: 1px solid var(--hair); }
-    .choice {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 12px;
-      width: 100%;
-      appearance: none;
-      -webkit-appearance: none;
-      background: none;
-      border: 0;
-      border-bottom: 1px solid var(--hair);
-      padding: 15px 2px;
-      cursor: pointer;
-      font-family: inherit;
-      font-size: 14px;
-      color: var(--text);
-      text-align: left;
-      transition: padding-left 180ms ease, color 180ms ease;
-    }
-    .choice::after {
-      content: "\2192";
-      color: var(--muted-2);
-      transition: transform 180ms ease, color 180ms ease;
-    }
-    .choice:hover { padding-left: 8px; }
-    .choice:hover::after { color: var(--text); transform: translateX(4px); }
 
     /* ---- Pixel-art form -------------------------------------------------- */
 
@@ -381,13 +245,12 @@
     .field-note.bad { color: #a33f2f; }
 
     @media (prefers-reduced-motion: reduce) {
-      .panel, canvas#stage, .hint { transition-duration: 1ms; }
-      .page, .page.arriving { animation: none; transition: none; transform: none; }
+      .dialog, .sheet, canvas#stage, .hint { transition-duration: 1ms; }
     }
   </style>
 </head>
 <body>
-  <canvas id="stage" aria-label="An interactive pixel-art world. Each area of the room is a part of Alex Parker's work; select one to read about it."></canvas>
+  <canvas id="stage" aria-label="An interactive pixel-art world. Every section of it is a part of Alex Parker's work, and everything it says is written into the world itself: tap a section to move in close, and tap a sign, a board, a screen or an object to read it."></canvas>
 
   <header class="header">
     <div class="header-inner">
@@ -399,43 +262,32 @@
 
   <div class="hint" id="hint">Drag to orbit &middot; Scroll to zoom in close</div>
 
-  <aside class="panel" id="panel" role="dialog" aria-modal="false" aria-labelledby="panelTitle">
-    <div class="panel-head">
-      <div class="eyebrow" id="panelEyebrow"></div>
-      <button class="panel-close" id="panelClose" type="button">Close</button>
-    </div>
-    <div class="panel-body" id="panelBody">
-      <div class="page" id="pageMain">
-        <h1 class="panel-title" id="panelTitle"></h1>
-        <p class="panel-lede" id="panelLede"></p>
-        <div id="panelText"></div>
-        <div class="items" id="panelItems"></div>
-        <div class="choices" id="panelChoices"></div>
-        <div class="todo" id="panelTodo" hidden></div>
+  <!-- Opened by tapping one of the four lines on the chart in the ward. -->
+  <div class="dialog" id="formDialog" role="dialog" aria-modal="true" aria-labelledby="formTitle">
+    <div class="sheet">
+      <div class="sheet-head">
+        <div class="eyebrow">RLDatix</div>
+        <button class="sheet-close" id="formClose" type="button">Close</button>
       </div>
-
-      <div class="page" id="pageForm" hidden>
-        <button class="page-back" id="formBack" type="button">&larr; Back</button>
-        <h1 class="panel-title" id="formTitle"></h1>
-        <form id="contactForm" novalidate>
-          <label class="field">
-            <span>Name</span>
-            <input class="px-input" id="fName" name="name" autocomplete="name" required>
-          </label>
-          <label class="field">
-            <span>Email</span>
-            <input class="px-input" id="fEmail" name="email" type="email" autocomplete="email" required>
-          </label>
-          <label class="field">
-            <span>Message</span>
-            <textarea class="px-input" id="fMsg" name="message" rows="5" required></textarea>
-          </label>
-          <button class="px-btn" type="submit">Send</button>
-          <p class="field-note" id="formNote">Opens your email app with this filled in.</p>
-        </form>
-      </div>
+      <h1 class="sheet-title" id="formTitle"></h1>
+      <form id="contactForm" novalidate>
+        <label class="field">
+          <span>Name</span>
+          <input class="px-input" id="fName" name="name" autocomplete="name" required>
+        </label>
+        <label class="field">
+          <span>Email</span>
+          <input class="px-input" id="fEmail" name="email" type="email" autocomplete="email" required>
+        </label>
+        <label class="field">
+          <span>Message</span>
+          <textarea class="px-input" id="fMsg" name="message" rows="5" required></textarea>
+        </label>
+        <button class="px-btn" type="submit">Send</button>
+        <p class="field-note" id="formNote">Opens your email app with this filled in.</p>
+      </form>
     </div>
-  </aside>
+  </div>
 
   <script type="module" src="./world.js"></script>
 </body>

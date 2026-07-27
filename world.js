@@ -15,7 +15,7 @@
 ============================================================================= */
 
 import * as THREE from "./vendor/three.module.min.js";
-import { ZONES, JAR_ZONE, BOARD, CHEST, CLIPBOARD, CONTACT } from "./content.js";
+import { ZONES, JAR_ZONE, BOARD, CHEST, CLIPBOARD, CONTACT, SCREEN } from "./content.js";
 
 /* ---- Palette ---------------------------------------------------------------
    Muted and warm, so a room full of colour still sits quietly on paper. */
@@ -92,6 +92,16 @@ const C = {
 
   aboutFloor:0xe2dbcb,
   rug2:      0xc0ac90,
+
+  // The dog: a sandy ridgeback crossed with a kelpie, in a white bed.
+  dog:       0xd0a468,
+  dogMuzzle: 0xb98a4e,
+  dogRidge:  0xba8b50,
+  dogPale:   0xe3c99b,
+  dogNose:   0x332c27,
+  bedRim:    0xfbfaf6,
+  bedPad:    0xd9d5ca,
+
   lampGlow:  0xffe9b0,
   steam:     0xdfe4e6,
 
@@ -265,8 +275,24 @@ const FONT = {
   "."  : "00000000000000000000000000110001100",
   "="  : "00000000001111100000111110000000000",
   "?"  : "01110100010000100010001000000000100",
+  "&"  : "01100100101001001100101011001001101",
+  "/"  : "00001000100010001000100001000010000",
+  ":"  : "00000011000110000000011000110000000",
+  "'"  : "00100001000100000000000000000000000",
+  "+"  : "00000001000010011111001000010000000",
+  "%"  : "11001110100001000100010000101110011",
+  "$"  : "00100011111010001110001011111000100",
+  "@"  : "01110100011011110101101111000001110",
+  "("  : "00010001000100001000010000100000010",
+  ")"  : "01000001000001000010000100010001000",
 };
 const GLYPH_W = 5, GLYPH_H = 7;
+
+/** Width of a string once drawn, without the trailing gap after the last
+    character. Everything that centres or fits text measures with this. */
+function textWidth(str, px) {
+  return str.length ? str.length * px * (GLYPH_W + 1) - px : 0;
+}
 
 /** Write `str` on a surface facing +z: characters advance along +x, rows down.
     Every scene faces +z out of the ring, so this is the readable direction. */
@@ -299,6 +325,57 @@ function wrapText(str, max) {
   }
   if (cur) out.push(cur);
   return out;
+}
+
+/** The same as textXY, centred on `cx` rather than run from a left margin. */
+function textMid(b, str, cx, yTop, z, px, color) {
+  return textXY(b, str, cx - textWidth(str, px) / 2, yTop, z, px, color);
+}
+
+/* ---- Cards ------------------------------------------------------------------
+
+   A small printed plate with a heading, a rule and a few short lines, drawn
+   into whatever mesh you hand it. Nothing in the world is labelled from the
+   outside — the scenes say what they are by what is in them — so the only
+   thing that uses this is the card that comes up beside an object in the toy
+   chest, where a project's name genuinely has nowhere else to live.
+
+   Sized from its own text, so nothing ever overflows the plate. */
+
+const SIGN_PLATE = 0xf1ede3, SIGN_FRAME = 0x3c443f;
+const SIGN_TITLE = 0x2b322e, SIGN_LINE = 0x6d766f;
+
+function signBoard(b, x, yBottom, z, title, lines, o) {
+  o = o || {};
+  const tp = o.titlePx || 0.05;             // title pixel
+  const lp = o.linePx || 0.028;             // body pixel
+  const pad = o.pad === undefined ? 0.17 : o.pad;
+  const titleH = GLYPH_H * tp, bodyH = GLYPH_H * lp;
+  const lineH = bodyH * 1.75;
+  const gap = lineH * 0.62;
+
+  let inner = textWidth(title, tp);
+  for (const l of lines) inner = Math.max(inner, textWidth(l, lp));
+  const w = inner + pad * 2;
+  const h = pad * 2 + titleH +
+            (lines.length ? gap + (lines.length - 1) * lineH + bodyH : 0);
+
+  b.box(x, yBottom, z, w + 0.09, h + 0.09, 0.06, o.frame || SIGN_FRAME);
+  b.box(x, yBottom + 0.045, z + 0.03, w, h, 0.04, o.plate || SIGN_PLATE);
+
+  const fz = z + 0.058;
+  let row = yBottom + 0.045 + h - pad;
+  textMid(b, title, x, row, fz, tp, o.title || SIGN_TITLE);
+  row -= titleH;
+  if (lines.length) {
+    b.box(x, row - gap / 2, fz, inner, tp * 0.5, 0.02, o.title || SIGN_TITLE);
+    row -= gap;
+    for (const l of lines) {
+      textMid(b, l, x, row, fz, lp, o.line || SIGN_LINE);
+      row -= lineH;
+    }
+  }
+  return { w: w, h: h + 0.09 };
 }
 
 function hash1(n) {
@@ -421,7 +498,10 @@ function monitor(b, g, x, y, z, w, h, ry, screenColor) {
 const BED_X = -0.35, BED_Z = 0.15;
 // Centre of the chart hanging off the footboard — also where the camera aims
 // when you tap it, so the geometry and the focus target can never drift apart.
-const CHART_Y = F + 0.6;
+// The four rows on it are tap targets too, hence their own two constants.
+const CHART_Y = F + 0.42;
+const CHART_ROW_Y = F + 0.43;
+const CHART_ROW_STEP = 0.085;
 
 function buildRLDatix(b, g) {
   island(b, ISLAND, C.clinFloor);
@@ -454,22 +534,26 @@ function buildRLDatix(b, g) {
   b.box(bx, frameY, bz + 1.2, 1.06, 0.36, 0.07, C.metal);
   b.box(bx - 0.55, frameY + 0.16, bz + 0.2, 0.05, 0.26, 1.3, C.metal);
   b.box(bx + 0.55, frameY + 0.16, bz + 0.2, 0.05, 0.26, 1.3, C.metal);
-  // Chart hanging off the end of the bed — a focus target of its own.
-  const cbY = CHART_Y - 0.3;
-  b.box(bx, cbY, bz + 1.4, 0.46, 0.6, 0.03, C.woodDark);
-  b.box(bx, cbY + 0.03, bz + 1.42, 0.39, 0.5, 0.02, C.paper);
-  b.box(bx, cbY + 0.46, bz + 1.42, 0.39, 0.07, 0.025, C.rld);
-  b.box(bx, cbY + 0.56, bz + 1.4, 0.2, 0.07, 0.06, C.metal);
-  textXY(b, "RLDATIX", bx - 0.147, cbY + 0.52, bz + 1.4425, 0.0072, C.paper);
-  // The four lines the panel offers, written on the paper as well, so zooming
-  // in on the chart shows the same thing the panel does.
-  const CHART_ROWS = ["RISK", "POLICY", "WORKFORCE", "DATA"];
-  for (let i = 0; i < CHART_ROWS.length; i++) {
-    const ry = cbY + 0.41 - i * 0.095;
-    b.box(bx - 0.185, ry - 0.032, bz + 1.435, 0.03, 0.03, 0.01, 0xb4bcb9);
-    b.box(bx - 0.18, ry - 0.027, bz + 1.44, 0.02, 0.02, 0.01, C.rld);
-    textXY(b, CHART_ROWS[i], bx - 0.145, ry, bz + 1.4375, 0.0052, 0x4a5250);
-  }
+  // The chart hanging off the end of the bed. Everything it says is written on
+  // the paper — there is no panel to put it in — and each of the four rows is
+  // its own tap target once the chart fills the screen.
+  const cbY = CHART_Y - 0.41, cz = bz + 1.42;
+  b.box(bx, cbY, bz + 1.4, 0.78, 0.82, 0.03, C.woodDark);
+  b.box(bx, cbY + 0.04, cz, 0.7, 0.7, 0.02, C.paper);
+  b.box(bx, cbY + 0.65, cz, 0.7, 0.09, 0.025, C.rld);
+  b.box(bx, cbY + 0.76, bz + 1.4, 0.26, 0.09, 0.07, C.metal);
+  textMid(b, CLIPBOARD.brand, bx, cbY + 0.72, cz + 0.023, 0.009, C.paper);
+  textMid(b, CLIPBOARD.title, bx, cbY + 0.615, cz + 0.018, 0.0075, 0x2c3532);
+  textMid(b, CLIPBOARD.title2, bx, cbY + 0.545, cz + 0.018, 0.0075, 0x2c3532);
+  b.box(bx, cbY + 0.475, cz + 0.018, 0.62, 0.011, 0.012, C.rld);
+
+  CLIPBOARD.lines.forEach(function (line, i) {
+    const ry = cbY + 0.44 - i * CHART_ROW_STEP;
+    b.box(bx - 0.24, ry - 0.036, cz + 0.015, 0.034, 0.034, 0.012, 0xb4bcb9);
+    b.box(bx - 0.24, ry - 0.031, cz + 0.02, 0.022, 0.022, 0.012, C.rld);
+    textXY(b, line, bx - 0.2, ry, cz + 0.018, 0.0058, 0x4a5250);
+  });
+  textMid(b, CLIPBOARD.foot, bx, cbY + 0.115, cz + 0.018, 0.0062, 0x8d9793);
 
   // IV pole.
   b.box(bx - 1.35, F, bz - 0.5, 0.3, 0.05, 0.3, C.metalDark);
@@ -574,8 +658,27 @@ function animRLDatix(group) {
 
 // The board is big enough, and specific enough, to be worth looking at on its
 // own — so its geometry is described here and picked up as a focus target.
-const BOARD_X = 1.35, BOARD_Z = -2.95, BOARD_W = 3.5, BOARD_H = 2.15;
+const BOARD_X = 1.65, BOARD_Z = -2.95, BOARD_W = 3.5, BOARD_H = 2.15;
 const BOARD_Y = F + 1.55;
+
+/* The screen on the desk, the other thing here worth looking at on its own.
+   These follow from what monitor() draws, so they and the geometry can never
+   drift: the lit panel starts 0.28 above the desk and is inset from the bezel. */
+const SCR_X = 0.15, SCR_W = 0.95, SCR_H = 0.64;
+const SCR_Y = F + 0.8 + 0.28 + SCR_H / 2;
+const SCR_Z = 0.593;
+const CHART_Y0 = SCR_Y - SCR_H / 2 + 0.2;    // where the curve stands
+const CHART_H = 0.3;                          // and how tall it gets
+
+/* One equity curve, written down rather than rolled: a grind up, a drawdown
+   that takes back most of it, then a recovery to a new high. The same shape
+   every time, because the point of it is the shape. */
+function equity(u) {
+  const trend = Math.pow(u, 1.25);
+  const dip = -0.5 * Math.exp(-Math.pow((u - 0.6) / 0.1, 2));
+  const wob = Math.sin(u * 23) * 0.03 + Math.sin(u * 51 + 1.1) * 0.016;
+  return Math.max(0.03, trend + dip + wob + 0.06);
+}
 
 function buildInvesting(b, g) {
   island(b, ISLAND, C.invFloor);
@@ -602,9 +705,26 @@ function buildInvesting(b, g) {
   crate(b, -2.5, F + 1.0, 1.15, 0.34, 0.3);
 
   const topY = desk(b, 0.35, 0.75, 2.0, 1.0, 0, C.wood);
-  monitor(b, g, 0.15, topY, 0.55, 0.82, 0.52, 0, 0x1d3a2a);
-  b.box(0.9, topY, 0.95, 0.38, 0.03, 0.22, 0xd6d6d0);
-  b.box(1.2, topY, 0.6, 0.2, 0.24, 0.14, C.paper);
+  monitor(b, g, SCR_X, topY, 0.55, 1.02, 0.7, 0, 0x14332a);
+  // Everything printed on the screen. The curve itself is animated below.
+  const sx0 = SCR_X - SCR_W / 2, sy1 = SCR_Y + SCR_H / 2;
+  textMid(b, SCREEN.title, SCR_X, sy1 - 0.04, SCR_Z, 0.0115, C.screenGrn);
+  b.box(SCR_X, sy1 - 0.14, SCR_Z, SCR_W - 0.1, 0.012, 0.014, 0x2c5c4a);
+  // A baseline, and two guides the curve crosses on its way up.
+  b.box(SCR_X, CHART_Y0, SCR_Z, SCR_W - 0.1, 0.012, 0.014, 0x2c5c4a);
+  for (let i = 1; i <= 2; i++) {
+    for (let k = 0; k < 15; k++) {                         // dashed, so it reads
+      b.box(sx0 + 0.055 + k * 0.062, CHART_Y0 + (CHART_H * i) / 3, SCR_Z,
+            0.03, 0.01, 0.012, 0x24503f);
+    }
+  }
+  let fy = CHART_Y0 - 0.055;
+  for (const line of SCREEN.lines) {
+    textMid(b, line, SCR_X, fy, SCR_Z, 0.008, 0x4e9c7d);
+    fy -= 0.075;
+  }
+  b.box(0.95, topY, 0.95, 0.38, 0.03, 0.22, 0xd6d6d0);
+  b.box(1.25, topY, 0.6, 0.2, 0.24, 0.14, C.paper);
   chair(b, 0.35, 2.05, Math.PI, C.woodDark);
 
   // The stand only. The panel itself is a separate mesh so it can turn over,
@@ -630,10 +750,6 @@ function buildInvesting(b, g) {
     b.box(2.68, coinY + i * 0.1 + 0.02, 1.5, 0.42, 0.05, 0.1, 0xd8cfae, 0.2);
   }
 
-  b.box(-0.6, F, -2.45, 1.15, 0.85, 0.8, C.metalDark, 0.18);
-  b.box(-0.6, F + 0.85, -2.45, 1.25, 0.16, 0.9, C.metal, 0.18);
-  g.box(-0.6, F + 0.66, -2.07, 0.34, 0.12, 0.02, C.screenGrn, 0.18);
-  b.box(-0.5, F + 0.3, -1.9, 0.6, 0.05, 0.34, C.money, 0.18);
   pottedPlant(b, -1.0, 2.5, 1.1);
 }
 
@@ -695,45 +811,41 @@ function animInvesting(group) {
     boardPivot.rotation.y += (to - boardPivot.rotation.y) * (1 - Math.pow(0.004, dt));
   });
 
-  // The chart scrolls: each candle inherits the one to its right.
-  const chart = new THREE.Group();
-  chart.position.set(0.15, F + 1.14, 0.582);
-  group.add(chart);
-  const candles = [];
-  for (let i = 0; i < 10; i++) {
-    const m = part(b => b.box(0, 0, 0, 0.042, 1, 0.012, C.screenGrn), true);
-    m.position.set(-0.32 + i * 0.071, 0, 0);
-    chart.add(m);
-    candles.push(m);
+  // The portfolio curve on the screen, drawn as columns so it fills in under
+  // itself the way an equity chart does. It draws left to right, holds at the
+  // end, and starts over.
+  const N = 34, colStep = (SCR_W - 0.1) / (N - 1), colX0 = SCR_X - (SCR_W - 0.1) / 2;
+  const eq = [];
+  for (let i = 0; i < N; i++) eq.push(equity(i / (N - 1)));
+  const eqMax = Math.max(...eq);
+  for (let i = 0; i < N; i++) eq[i] /= eqMax;
+
+  const cols = [];
+  for (let i = 0; i < N; i++) {
+    const m = part(b => b.box(0, 0, 0, colStep * 0.82, 1, 0.012, C.screenGrn), true);
+    m.position.set(colX0 + i * colStep, CHART_Y0, SCR_Z + 0.002);
+    group.add(m);
+    cols.push(m);
   }
+  // The point the line has reached, so the eye has something to follow.
+  const head = part(b => b.box(-0.014, -0.014, 0, 0.028, 0.028, 0.012, 0xcdf3de), true);
+  group.add(head);
+
   ups.push(function (t, dt, amt, idle) {
     const a = Math.max(amt, idle);
-    for (let i = 0; i < candles.length; i++) {
-      const k = t * 0.6 + i * 0.55;
-      const h = 0.04 + walk(k) * 0.22;
-      candles[i].scale.y = 0.03 + h * a;
-      candles[i].position.y = -0.16 + walk(k * 0.5 + 11) * 0.2 * a;
+    // Asleep it just shows the finished curve; awake it redraws itself.
+    const cyc = (t * 0.115) % 1;
+    const p = a > 0.05 ? (cyc < 0.72 ? cyc / 0.72 : 1) : 1;
+    for (let i = 0; i < N; i++) {
+      const grow = clamp((p - i / (N - 1)) * (N - 1) + 1, 0, 1);
+      cols[i].visible = grow > 0.002;
+      cols[i].scale.y = Math.max(0.006, eq[i] * CHART_H * grow);
     }
-  });
-
-  // The press keeps running notes out onto the tray.
-  const press = new THREE.Group();
-  press.position.set(-0.6, 0, -2.45);
-  press.rotation.y = 0.18;
-  group.add(press);
-  const note = part(b => {
-    b.box(0, 0, 0, 0.52, 0.035, 0.28, C.money);
-    b.box(0, 0.035, 0, 0.48, 0.012, 0.24, 0xa3bd90);
-  });
-  press.add(note);
-  ups.push(function (t, dt, amt, idle) {
-    note.visible = Math.max(amt, idle) > 0.35;
-    if (!note.visible) return;
-    const p = (t * 0.45) % 1;
-    const slide = Math.min(1, p / 0.6);
-    const fall = p < 0.6 ? 0 : Math.min(1, (p - 0.6) / 0.4);
-    note.position.set(0.08, F + 0.56 - fall * 0.24, 0.15 + slide * 0.44);
-    note.rotation.x = fall * 0.14;
+    const lead = clamp(Math.round(p * (N - 1)), 0, N - 1);
+    head.visible = p < 0.999 && a > 0.05;
+    if (head.visible) {
+      head.position.set(colX0 + lead * colStep, CHART_Y0 + eq[lead] * CHART_H, SCR_Z + 0.006);
+    }
   });
 
   return ups;
@@ -1097,17 +1209,6 @@ function animProjects(group, def, zone) {
     const shape = (typeof entry === "string") ? entry : entry.shape;
     const mesh = makeToy(shape, i);
     mesh.scale.setScalar(TOY_SCALE);
-    if (typeof entry !== "string") {
-      addMovingDetail(zone, mesh, {
-        eyebrow: "In the chest",
-        title: entry.title || shape,
-        lede: entry.text || "",
-        items: entry.href
-          ? [{ name: entry.href.replace(/^https?:\/\//, ""), tag: "Visit", href: entry.href }]
-          : null,
-        todo: null
-      });
-    }
     // Laid out across the chest rather than round it, so that nothing ends up
     // hiding behind anything else from the front.
     const n = Math.min(7, kinds.length);
@@ -1121,6 +1222,26 @@ function animProjects(group, def, zone) {
     mesh.userData.spin = 0.34 + (i % 3) * 0.13;
     mesh.position.set(0, -0.34, -0.4);
     toys.add(mesh);
+
+    if (typeof entry === "string") continue;
+
+    // Each object carries its own card, hung above it and hidden until the
+    // object is tapped. This is where a project's name lives now.
+    const lines = (entry.lines || []).slice();
+    if (entry.href) lines.push("TAP AGAIN TO OPEN");
+    const cb = new Builder();
+    const size = signBoard(cb, 0, 0, 0, entry.title || shape, lines,
+                           { titlePx: 0.018, linePx: 0.0135, pad: 0.09 });
+    const card = solidMesh(cb);
+    card.position.set(mesh.userData.home.x, F + 1.98, mesh.userData.home.z - 0.34);
+    card.visible = false;
+    group.add(card);
+
+    const d = addMovingDetail(zone, mesh);
+    d.card = card;
+    d.yOff = size.h / 2 + 0.02;                 // aim between object and card
+    cardDetails.push(d);
+    if (entry.href) d.act = function () { window.open(entry.href, "_blank", "noopener"); };
   }
 
   ups.push(function (t, dt, amt, idle) {
@@ -1172,17 +1293,106 @@ function buildAbout(b, g) {
   b.cone(-0.94, topY + 0.5, 0.3, 0.17, 0.2, 8, C.brass, Math.PI, 0, 0);
 
   chair(b, 0.1, 1.7, Math.PI, C.woodDark);
-  pottedPlant(b, 2.6, 1.9, 1.3);
+  pottedPlant(b, 2.7, -2.4, 1.3);
   pottedPlant(b, -2.5, 2.3, 0.9);
   crate(b, -1.9, F + 0.05, 2.6, 0.5, 0.3);
   for (let i = 0; i < 4; i++) {
-    b.box(1.75, F + 0.05 + i * 0.075, 2.3, 0.42, 0.075, 0.32, BOOKS[i + 2], i * 0.16);
+    b.box(-0.9, F + 0.05 + i * 0.075, 2.5, 0.42, 0.075, 0.32, BOOKS[i + 2], i * 0.16);
+  }
+
+  // The dog bed: a white bolster with the cushion sunk down inside it. The dog
+  // is animated, so he is built in animAbout below.
+  const dx = DOG_X, dz = DOG_Z;
+  b.cyl(dx, F, dz, DOG_BED_R, DOG_BED_R + 0.04, 0.08, 14, C.bedRim);
+  b.cyl(dx, F + 0.08, dz, DOG_BED_R - 0.02, DOG_BED_R, 0.2, 14, C.bedRim);
+  b.cyl(dx, F + 0.09, dz, DOG_BED_R - 0.22, DOG_BED_R - 0.22, 0.09, 14, C.bedPad);
+  b.cyl(dx, F + 0.18, dz, DOG_BED_R - 0.26, DOG_BED_R - 0.24, 0.03, 14, C.bedPad);
+}
+
+/* ---- The dog ----------------------------------------------------------------
+   Sandy ridgeback crossed with a kelpie: long back, deep chest, pricked ears
+   and the ridge of hair that grows the wrong way down the spine. Lying in the
+   sphinx pose with his front paws over the edge of the bed, so he has a head
+   to lift when somebody arrives.
+
+   Everything below is measured from the top of the cushion, which is where
+   DOG_Y puts the group — so his belly is at y = 0 and nothing floats. */
+
+const DOG_X = 1.9, DOG_Z = 1.6, DOG_BED_R = 0.95;
+const DOG_Y = F + 0.21, DOG_RY = 0.34;
+
+function dogBody(b) {
+  b.box(0, 0.1, -0.08, 0.42, 0.3, 0.78, C.dog);                // barrel
+  b.box(0, 0.08, 0.24, 0.45, 0.32, 0.28, C.dog);               // deeper at the chest
+  b.box(0, 0.05, -0.42, 0.44, 0.26, 0.2, C.dog);               // rump
+  b.box(0, 0.39, -0.02, 0.11, 0.035, 0.66, C.dogRidge);        // the ridge
+  for (const s of [-1, 1]) {
+    b.box(s * 0.21, 0.02, -0.3, 0.13, 0.28, 0.4, C.dog);       // hind legs, folded
+    b.box(s * 0.19, 0.0, -0.44, 0.15, 0.14, 0.16, C.dogPale);  // hind paws
+    b.box(s * 0.12, 0.0, 0.32, 0.14, 0.15, 0.38, C.dog);       // forelegs, stretched
+    b.box(s * 0.12, 0.0, 0.6, 0.16, 0.12, 0.16, C.dogPale);    // front paws
   }
 }
 
-function animAbout(group) {
+function dogHead(b) {
+  b.box(0, -0.14, -0.15, 0.19, 0.26, 0.24, C.dog);             // neck
+  b.box(0, 0, 0, 0.25, 0.23, 0.25, C.dog);                     // skull
+  b.box(0, 0.0, 0.13, 0.16, 0.13, 0.2, C.dogMuzzle);           // muzzle
+  b.box(0, -0.025, 0.14, 0.13, 0.035, 0.17, C.dogPale);        // chin
+  b.box(0, 0.035, 0.31, 0.085, 0.065, 0.035, C.dogNose);       // nose
+  for (const s of [-1, 1]) {
+    b.box(s * 0.062, 0.115, 0.115, 0.04, 0.04, 0.025, C.dogNose);    // eyes, proud
+    b.box(s * 0.105, 0.16, 0.05, 0.04, 0.045, 0.1, C.dogMuzzle);     // brow
+    // Kelpie ears: pricked, and tipped out a little.
+    b.boxC(s * 0.1, 0.29, -0.04, 0.085, 0.2, 0.05, C.dogMuzzle, -0.1, 0, s * 0.26);
+    b.boxC(s * 0.1, 0.27, -0.015, 0.05, 0.14, 0.03, C.dogPale, -0.1, 0, s * 0.26);
+  }
+}
+
+function animAbout(group, def, zone) {
   const ups = [];
   const topY = ABOUT_TOP;
+
+  // The dog: breathing all the time, head up and tail going when you arrive.
+  const dog = new THREE.Group();
+  dog.position.set(DOG_X, DOG_Y, DOG_Z);
+  dog.rotation.y = DOG_RY;
+  group.add(dog);
+
+  const body = part(dogBody);
+  dog.add(body);
+
+  const neck = new THREE.Group();
+  neck.position.set(0, 0.3, 0.26);
+  dog.add(neck);
+  const head = part(dogHead);
+  head.position.set(0, 0.13, 0.08);
+  neck.add(head);
+
+  const tailPivot = new THREE.Group();
+  tailPivot.position.set(0, 0.14, -0.5);
+  dog.add(tailPivot);
+  const tail = part(function (b) {
+    b.box(-0.05, -0.05, -0.26, 0.1, 0.1, 0.3, C.dog);
+    b.box(-0.045, -0.055, -0.5, 0.09, 0.09, 0.26, C.dog);
+    b.box(-0.04, -0.065, -0.68, 0.08, 0.08, 0.14, C.dogPale);
+  });
+  tailPivot.add(tail);
+
+  ups.push(function (t, dt, amt, idle) {
+    const a = Math.max(amt, idle);
+    const breath = Math.sin(t * 1.5) * 0.5 + 0.5;
+    body.scale.set(1 + breath * 0.02, 1 + breath * 0.025, 1);
+    // Asleep his chin is down on his paws; awake his head comes up and he
+    // has a look around.
+    neck.rotation.x = 0.72 - 0.8 * a + Math.sin(t * 0.9) * 0.03;
+    neck.rotation.y = Math.sin(t * 0.55 + 1.2) * 0.26 * a;
+    neck.rotation.z = Math.sin(t * 0.37) * 0.05 * a;
+    // A slow sweep on the cushion most of the time, a proper wag when watched.
+    tailPivot.rotation.y = Math.sin(t * (2.0 + 6.5 * a)) * (0.1 + 0.5 * a);
+    tailPivot.rotation.x = -0.1 - 0.55 * a;
+  });
+  void zone;
 
   // The lamp warms up.
   const bulb = part(b => b.rock(0, 0, 0, 0.09, C.lampGlow), true);
@@ -1420,7 +1630,7 @@ const pickables = [];
 const detailHits = [];
 
 /** A hit box carried by a moving object, so it can be tapped where it is. */
-function addMovingDetail(zone, mesh, panel) {
+function addMovingDetail(zone, mesh) {
   const hit = new THREE.Mesh(
     new THREE.BoxGeometry(0.66, 0.66, 0.66),
     new THREE.MeshBasicMaterial({ visible: false })
@@ -1429,12 +1639,12 @@ function addMovingDetail(zone, mesh, panel) {
   const detail = {
     zone: zone,
     obj: mesh,
-    az: zone.group.rotation.y + 0.34,
-    el: 0.5,
-    fitH: 1.65,
-    fitV: 1.02,
-    enabled: false,
-    panel: panel
+    // Nearly face on, because there is a card to read next to it.
+    az: zone.group.rotation.y + 0.12,
+    el: 0.34,
+    fitH: 1.7,
+    fitV: 1.2,
+    enabled: false
   };
   hit.userData.detail = detail;
   mesh.userData.detail = detail;
@@ -1442,10 +1652,38 @@ function addMovingDetail(zone, mesh, panel) {
   return detail;
 }
 
-/** A single object inside a scene worth looking at on its own. Local coords. */
-function addDetail(zone, lx, ly, lz, w, h, fitH, fitV, el, act) {
+/* Details that only wake up while another detail is the one being looked at —
+   the four lines on the clipboard, which would otherwise be a set of tiny
+   tap targets floating over the end of a bed. */
+const gatedDetails = [];
+
+/* Details that bring a written card with them — the objects in the chest. The
+   card hangs in the scene beside the object and is only shown while it is the
+   thing being looked at. */
+const cardDetails = [];
+
+function gateDetail(d, parent) {
+  d.gate = parent;
+  d.enabled = false;
+  gatedDetails.push(d);
+  return d;
+}
+
+function refreshGates() {
+  for (const d of gatedDetails) {
+    d.enabled = d.gate ? (activeDetail === d.gate) : (activeZone === d.gateZone);
+  }
+}
+
+/** A single object inside a scene worth looking at on its own. Local coords.
+
+    `depth` matters more than it looks. The camera is always angled down, so a
+    ray crossing a deep box drops a long way inside it — deep enough and a tap
+    aimed at one line of a list enters the box of the line above. Anything
+    stacked close together wants a shallow box. */
+function addDetail(zone, lx, ly, lz, w, h, fitH, fitV, el, act, depth) {
   const hit = new THREE.Mesh(
-    new THREE.BoxGeometry(w, h, 0.6),
+    new THREE.BoxGeometry(w, h, depth || 0.6),
     new THREE.MeshBasicMaterial({ visible: false })
   );
   hit.position.set(lx, ly, lz);
@@ -1466,6 +1704,12 @@ function addDetail(zone, lx, ly, lz, w, h, fitH, fitV, el, act) {
     )
   };
   detail.act = act || null;
+  // Asleep until its island is the one selected. A sign or a whiteboard is a
+  // big target, and from right out at the ring a tap should choose the island,
+  // not jump straight past it into whatever happened to be behind the cursor.
+  detail.gateZone = zone;
+  detail.enabled = false;
+  gatedDetails.push(detail);
   hit.userData.detail = detail;
   detailHits.push(hit);
   return detail;
@@ -1523,21 +1767,34 @@ ZONES.forEach(function (def, i) {
   if (def.id === "investing") {
     addDetail(zone, BOARD_X, BOARD_Y, BOARD_Z, BOARD_W, BOARD_H, 3.05, 1.75, 0.3,
                function () { boardTurned = boardTurned ? 0 : 1; touched(); });
+    addDetail(zone, SCR_X, SCR_Y, SCR_Z, SCR_W, SCR_H, 0.66, 0.44, 0.2);
   }
 
-  // The chart on the end of the bed: tap it and it comes up as the clipboard,
-  // whose four lines each turn the page over to a message form.
+  // The chart on the end of the bed. Tap it to read it; once it fills the
+  // screen its four lines become tap targets of their own, and each one opens
+  // the message form.
   if (def.id === "rldatix") {
-    const d = addDetail(zone, BED_X, CHART_Y, BED_Z + 1.42, 0.62, 0.8, 1.0, 0.74, 0.24);
-    d.panel = {
-      eyebrow: CLIPBOARD.eyebrow,
-      title: CLIPBOARD.title,
-      lede: CLIPBOARD.lede,
-      choices: CLIPBOARD.lines
-    };
+    const chart = addDetail(zone, BED_X, CHART_Y, BED_Z + 1.42, 0.82, 0.86,
+                            0.55, 0.46, 0.24, null, 0.1);
+    CLIPBOARD.lines.forEach(function (line, k) {
+      // Thin, and a shade in front of the chart, so the row you tapped is the
+      // row the ray reaches first.
+      const row = addDetail(zone, BED_X - 0.02, CHART_ROW_Y - k * CHART_ROW_STEP,
+                            BED_Z + 1.45, 0.44, 0.082, 1.0, 0.74, 0.24,
+                            function () { openForm(CLIPBOARD.topics[k] || line); },
+                            0.06);
+      row.instant = true;                    // acts on the first tap, no zoom
+      gateDetail(row, chart);
+    });
   }
 });
 addZone(JAR_ZONE, 0, 0, 0, 4.8, 5.0);
+
+// Placeholder copy has nowhere left to show itself, so it nags here instead of
+// quietly shipping as though it were finished.
+for (const def of ZONES) {
+  if (def.todo) console.info("[alexparker.au] " + def.label + " — " + def.todo);
+}
 
 /* =============================================================================
    Camera, controls, picking
@@ -1725,71 +1982,61 @@ function hoverAt(px, py) {
 
 function clickAt(px, py) {
   const p = pick(px, py);
-  if (!p) { closePanel(); return; }
+  if (!p) { clearFocus(); return; }
   if (p.detail) focusDetail(p.detail); else focusZone(p.zone);
 }
 
 /* =============================================================================
-   Panel and focus
-============================================================================= */
+   Focus
 
-const panel = document.getElementById("panel");
-const elEyebrow = document.getElementById("panelEyebrow");
-const elTitle = document.getElementById("panelTitle");
-const elLede = document.getElementById("panelLede");
-const elText = document.getElementById("panelText");
-const elItems = document.getElementById("panelItems");
-const elChoices = document.getElementById("panelChoices");
-const elTodo = document.getElementById("panelTodo");
+   There is no panel. Selecting something only moves the camera — every word is
+   already in the world, on a sign or a board or a screen, so getting close
+   enough to read it IS the interface.
+============================================================================= */
 
 let activeZone = null;
 let activeDetail = null;
 let azBeforeFocus = HOME.az;
 
-/** Push the view clear of whichever edge the panel occupies. Measured against
-    the frustum the camera is heading FOR, not the one it currently has. */
-function applyPanelShift() {
-  if (!activeZone) { want.sx = 0; want.sy = 0; return; }
-  const r = panel.getBoundingClientRect();
-  const aspect = cssW / cssH;
-  const w = Math.max(want.fitH * want.scale, want.fitV * want.scale * aspect);
-  if (cssW >= 861) {
-    want.sx = w * (r.width / cssW);
-    want.sy = 0;
-  } else {
-    want.sx = 0;
-    want.sy = -(w / aspect) * (r.height / cssH);
-  }
+/** Show the card belonging to whatever is being looked at, and nothing else. */
+function refreshCards() {
+  for (const c of cardDetails) c.card.visible = (activeDetail === c);
 }
 
-/** Move the camera square onto one object and leave the panel as it is. */
+/** Move the camera square onto one object. */
 function focusDetail(d) {
-  // Already looking at it? Then the tap means "do the thing" — turn the board.
+  // Some targets are switches rather than places — a line on the clipboard
+  // opens the form and the view stays where it is.
+  if (d.instant) { if (d.act) d.act(); touched(); return; }
+  // Already looking at it? Then the tap means "do the thing" — turn the board,
+  // open the project.
   if (activeDetail === d && d.act) { d.act(); return; }
   if (!activeZone) azBeforeFocus = want.az;
   activeZone = d.zone;
   activeDetail = d;
 
-  const portrait = cssH > cssW * 1.15;
   want.az = d.az;
   want.el = d.el;
-  want.fitH = portrait ? d.fitH * 0.78 : d.fitH;
-  want.fitV = portrait ? d.fitV * 1.2 : d.fitV;
+  want.fitH = d.fitH;
+  want.fitV = d.fitV;
   want.scale = 1;
+  want.sx = 0;
+  want.sy = 0;
   // A detail attached to something that moves reads its position now, once,
   // rather than every frame — otherwise the camera rides the bob. A static one
   // was measured before the island floats up, so add the float back on.
   if (d.obj) {
     d.obj.getWorldPosition(want.target);
+    want.target.y += d.yOff || 0;
   } else {
     want.target.copy(d.pos);
     want.target.y += FOCUS_LIFT;
   }
 
-  fillPanel(d.panel || d.zone.def);
-  document.body.classList.add("panel-open");
+  document.body.classList.add("focused");
+  refreshGates();
+  refreshCards();
   touched();
-  requestAnimationFrame(applyPanelShift);
 }
 
 function focusZone(zone) {
@@ -1801,92 +2048,31 @@ function focusZone(zone) {
   // Offset off the island's facing, so a focused scene reads as a diorama in
   // three-quarters rather than flattening into a face-on rectangle.
   if (zone.focusAz !== null) want.az = zone.focusAz + 0.34;
-  want.el = portrait ? 0.74 : 0.66;
+  want.el = portrait ? 0.68 : 0.6;
   const small = zone.def.id === "hourglass";
-  want.fitH = portrait ? (small ? 5.4 : 5.6) : (small ? 7.6 : 8.4);
-  want.fitV = portrait ? (small ? 4.6 : 4.6) : (small ? 5.0 : 5.3);
+  want.fitH = small ? 4.6 : 5.2;
+  want.fitV = small ? 3.5 : 3.7;
   want.scale = 1;
-  want.target.set(zone.group.position.x, small ? 2.3 : 1.5, zone.group.position.z);
+  want.sx = 0;
+  want.sy = 0;
+  want.target.set(zone.group.position.x, small ? 2.1 : 1.4, zone.group.position.z);
 
-  fillPanel(zone.def);
-  document.body.classList.add("panel-open");
+  document.body.classList.add("focused");
+  refreshGates();
+  refreshCards();
   touched();
-  requestAnimationFrame(applyPanelShift);   // measure once the panel has laid out
-}
-
-function fillPanel(d) {
-  showMainPage();
-  elEyebrow.textContent = d.eyebrow || "";
-  elTitle.textContent = d.title || d.label;
-  elLede.textContent = d.lede || "";
-  elLede.hidden = !d.lede;
-
-  elText.innerHTML = "";
-  for (const para of d.text || []) {
-    const p = document.createElement("p");
-    p.textContent = para;
-    elText.appendChild(p);
-  }
-
-  elItems.innerHTML = "";
-  elItems.hidden = !(d.items && d.items.length);
-  for (const item of d.items || []) {
-    const row = document.createElement("div");
-    row.className = "item";
-    const name = document.createElement("div");
-    name.className = "item-name";
-    if (item.href) {
-      const a = document.createElement("a");
-      a.href = item.href;
-      a.textContent = item.name;
-      a.target = "_blank";
-      a.rel = "noopener noreferrer";
-      name.appendChild(a);
-    } else {
-      name.textContent = item.name;
-    }
-    row.appendChild(name);
-    if (item.tag) {
-      const tag = document.createElement("div");
-      tag.className = "item-tag";
-      tag.textContent = item.tag;
-      row.appendChild(tag);
-    }
-    if (item.note) {
-      const note = document.createElement("div");
-      note.className = "item-note";
-      note.textContent = item.note;
-      row.appendChild(note);
-    }
-    elItems.appendChild(row);
-  }
-
-  elChoices.innerHTML = "";
-  elChoices.hidden = !(d.choices && d.choices.length);
-  for (const line of d.choices || []) {
-    const btn = document.createElement("button");
-    btn.className = "choice";
-    btn.type = "button";
-    btn.textContent = line;
-    btn.addEventListener("click", function () { openForm(line); });
-    elChoices.appendChild(btn);
-  }
-
-  elTodo.hidden = !d.todo;
-  elTodo.textContent = d.todo || "";
 }
 
 /* =============================================================================
-   The message form — the page behind the clipboard
+   The message form
 
-   There is no server here: this is a static site, so Send hands the message to
-   the visitor's own mail app with everything filled in. Nothing is posted
-   anywhere, and nothing is stored.
+   The one piece of the site that has to be HTML — you cannot type into a mesh.
+   There is no server here either: Send hands the message to the visitor's own
+   mail app with everything filled in. Nothing is posted anywhere, nothing is
+   stored.
 ============================================================================= */
 
-const panelBody = document.getElementById("panelBody");
-const pageMain = document.getElementById("pageMain");
-const pageForm = document.getElementById("pageForm");
+const dialog = document.getElementById("formDialog");
 const elFormTitle = document.getElementById("formTitle");
 const elFormNote = document.getElementById("formNote");
 const contactForm = document.getElementById("contactForm");
@@ -1895,52 +2081,28 @@ const fEmail = document.getElementById("fEmail");
 const fMsg = document.getElementById("fMsg");
 const NOTE_IDLE = elFormNote.textContent;
 
-let turning = false;
-
-/** The page turn: the outgoing page swings away on its spine, the incoming one
-    swings in behind it. Swapped at the halfway point so they never overlap. */
-function turnPage(to) {
-  const from = to === pageForm ? pageMain : pageForm;
-  if (turning || from.hidden) return;
-  turning = true;
-  document.body.classList.add("turning");
-  setTimeout(function () {
-    document.body.classList.remove("turning");
-    from.hidden = true;
-    to.hidden = false;
-    to.classList.remove("arriving");
-    void to.offsetWidth;                 // restart the animation
-    to.classList.add("arriving");
-    panelBody.scrollTop = 0;
-    turning = false;
-  }, 220);
-}
-
-/** Back to the front of the panel with no animation — used whenever the panel
-    is refilled, so a new section never opens on someone else's form. */
-function showMainPage() {
-  document.body.classList.remove("turning");
-  turning = false;
-  pageForm.hidden = true;
-  pageMain.hidden = false;
-  pageMain.classList.remove("arriving");
-  clearNote();
-}
-
 function clearNote() {
   elFormNote.className = "field-note";
   elFormNote.textContent = NOTE_IDLE;
 }
 
+function formOpen() { return document.body.classList.contains("form-open"); }
+
 function openForm(topic) {
   elFormTitle.textContent = topic;
   contactForm.dataset.topic = topic;
   clearNote();
-  turnPage(pageForm);
+  document.body.classList.add("form-open");
+  requestAnimationFrame(function () { fName.focus(); });
 }
 
-document.getElementById("formBack").addEventListener("click", function () {
-  turnPage(pageMain);
+function closeForm() {
+  document.body.classList.remove("form-open");
+}
+
+document.getElementById("formClose").addEventListener("click", closeForm);
+dialog.addEventListener("click", function (e) {
+  if (e.target === dialog) closeForm();       // tapping the backdrop shuts it
 });
 
 contactForm.addEventListener("submit", function (e) {
@@ -1973,7 +2135,8 @@ contactForm.addEventListener("submit", function (e) {
   window.location.href = href;
 });
 
-function closePanel() {
+/** Back out to the whole ring. */
+function clearFocus() {
   if (!activeZone) return;
   activeZone = null;
   activeDetail = null;
@@ -1985,15 +2148,16 @@ function closePanel() {
   want.sx = 0;
   want.sy = 0;
   want.target.copy(HOME.target);
-  document.body.classList.remove("panel-open");
+  document.body.classList.remove("focused");
+  refreshGates();
+  refreshCards();
 }
 
-document.getElementById("panelClose").addEventListener("click", closePanel);
 document.addEventListener("keydown", function (e) {
   if (e.key !== "Escape") return;
-  // On the form, Escape turns the page back rather than throwing the whole
-  // panel away with a half-typed message in it.
-  if (!pageForm.hidden) turnPage(pageMain); else closePanel();
+  // On the form, Escape shuts the form rather than throwing away the view as
+  // well with a half-typed message in it.
+  if (formOpen()) closeForm(); else clearFocus();
 });
 
 function touched() { document.body.classList.add("touched"); }
@@ -2005,7 +2169,7 @@ function touched() { document.body.classList.add("touched"); }
 const API = "https://api.counterapi.dev/v2/alexander-parkers-team-4716/first-counter-4716";
 const LOCAL_KEY = "ap_count_local";
 const counterEl = document.getElementById("counter");
-if (counterEl && JAR_ZONE.lede) counterEl.title = "One grain for every visit";
+if (counterEl) counterEl.title = "One grain for every visit";
 
 function pickNumber(list) {
   for (const v of list) if (typeof v === "number" && isFinite(v)) return v;
@@ -2114,8 +2278,6 @@ function resize() {
     if (!userMoved) { want.az = HOME.az; want.el = HOME.el; cam.az = HOME.az; cam.el = HOME.el; }
   }
 
-  applyCamera();
-  applyPanelShift();
   applyCamera();
 }
 window.addEventListener("resize", resize);

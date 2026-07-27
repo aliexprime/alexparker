@@ -1,99 +1,62 @@
 /* =============================================================================
    content.js — every word on the site lives here, and there should not be many.
 
-   The room does the talking. If a fact can be shown — a belt with two stripes,
-   a ticker on a whiteboard, a chest with one toy per project — build it into
-   the scene in world.js rather than writing it down here.
+   There is no side panel, and no signs hanging over the world either. Each
+   scene says what it is by what is in it. So the only words left are the ones
+   with a real surface to sit on, printed into the world in the 5x7 pixel font:
+   a whiteboard, a screen, a chart on a bed, a label beside a toy. Write short
+   lines in upper case and only what a passer-by needs.
+
+   The font covers A-Z 0-9 and . , - ! ? = & / : ' + % $ @ ( ). Anything else
+   is skipped silently, so keep to those.
 
    Each entry in ZONES is one floating island, and the ARRAY ORDER is the order
    they sit in the ring, starting at the front and going clockwise. Move an
-   entry up or down and its island moves with it.
+   entry up or down and its island moves with it. The scene for each one is
+   built in world.js — this file only holds its id, its name, and any note to
+   yourself about what is still unfinished.
 
-   Delete the `todo` line from a section once its placeholder is gone — that
-   dashed box only exists to stop placeholder text quietly shipping as if it
-   were real.
+   `todo` no longer shows on the site — nothing does, there is nowhere to put
+   it. It prints once to the browser console instead, so unfinished copy still
+   nags at you without a visitor ever seeing it. Delete the line when it's done.
 ============================================================================= */
 
 export const ZONES = [
   {
     id: "rldatix",
-    label: "RLDatix",
-    eyebrow: "Work",
-    title: "Healthcare software",
-    lede: "Governance, policy and rostering systems for hospitals and aged care.",
-    items: [
-      { name: "DatixCloudIQ", tag: "Governance" },
-      { name: "PolicyStat", tag: "Policy" },
-      { name: "Optima", tag: "Rostering" },
-      { name: "VitalCenter Online", tag: "Archival" }
-    ]
+    label: "RLDatix"
   },
 
   {
     id: "investing",
-    label: "Investing",
-    eyebrow: "Practice",
-    title: "Markets",
-    lede: "Write the reasoning down before the outcome is known. Nothing here is advice.",
-    todo: "Tap the board to read it, tap again to turn it over. Both sides are placeholders \u2014 rewrite BOARD at the bottom of this file, then delete this line."
+    label: "Investing"
   },
 
   {
     id: "bjj",
     label: "Jiu-jitsu",
-    eyebrow: "Training",
-    title: "The mats",
-    lede: "Taekwondo as a kid. Jiu-jitsu now.",
-    items: [
-      { name: "Brazilian jiu-jitsu", tag: "Now" },
-      { name: "Taekwondo", tag: "Then" }
-    ],
-    todo: "Both belts are on the rack — zoom in. Add your gym here if you want it named, then delete this line."
+    todo: "The belt rack has both belts on it — zoom in. Nothing names the gym — say if you want it lettered onto the mats or the rack."
   },
 
   {
     id: "music",
     label: "Music",
-    eyebrow: "Studio",
-    title: "Decks and records",
-    lede: "DJing, and music made for its own sake.",
-    items: [
-      { name: "Track or set one", tag: "Year" },
-      { name: "Track or set two", tag: "Year" },
-      { name: "Track or set three", tag: "Year" }
-    ],
-    todo: "Placeholder. Real names and years, and links if there are any."
+    todo: "No track or set names anywhere yet. They could go on the record sleeves or the laptop screen."
   },
 
   {
     id: "projects",
-    label: "Projects",
-    eyebrow: "Archive",
-    title: "The toy chest",
-    lede: "Side builds. Open it and things fall out.",
-    items: [
-      { name: "AFLmarket.com", tag: "Site", href: "https://aflmarket.com" },
-      { name: "headsortailshero.com", tag: "Site", href: "https://headsortailshero.com" },
-      { name: "Scentcloud", tag: "Unfinished" }
-    ],
-    todo: "Open the chest and tap an object to read about that project. The two live ones still need a line each saying what they are \u2014 see CHEST at the bottom of this file."
+    label: "Projects"
   },
 
   {
     id: "about",
-    label: "About",
-    eyebrow: "Who",
-    title: "Alex Parker",
-    lede: "Australia. Somewhere between the clinical side and the software.",
-    items: [
-      { name: "hello@alexparker.au", tag: "Email" }
-    ],
-    todo: "One or two sentences of your own, if you want them. Otherwise leave it this short and delete this line."
+    label: "About"
   }
 ];
 
-/* Both sides of the whiteboard. Tap the board to read it, tap again and it
-   turns over. Long lines wrap to the board on their own. */
+/* Both sides of the whiteboard in the investing room. Tap the board to read
+   it, tap again and it turns over. Long lines wrap to the board on their own. */
 export const BOARD = {
   front: {
     heading: "WHAT ACTUALLY MOVES IT",
@@ -115,43 +78,52 @@ export const BOARD = {
   }
 };
 
+/* The screen on the investing desk. Tap it and it fills the view while the
+   equity curve draws itself out, drawdown and all. Keep `lines` to two. */
+export const SCREEN = {
+  title: "PORTFOLIO",
+  lines: ["EVERY LINE HAS", "A DRAWDOWN IN IT"]
+};
+
 /* What is in the toy chest, in order — one object per project. Each one turns
-   and bobs while the chest is open, and can be tapped on its own.
+   and bobs while the chest is open. Tap one and a label comes up beside it;
+   tap it again and the site opens, if there is one to open.
 
    Known shapes: coin, football (AFL), perfume, rocket, cube, ball, controller,
    brush. Add a case to makeToy in world.js for anything else. */
 export const CHEST = [
   {
     shape: "football",
-    title: "AFLmarket.com",
-    text: "Placeholder. One line on what it is.",
+    title: "AFLMARKET.COM",
+    lines: [],
     href: "https://aflmarket.com"
   },
   {
     shape: "coin",
-    title: "headsortailshero.com",
-    text: "Placeholder. One line on what it is.",
+    title: "HEADSORTAILSHERO.COM",
+    lines: [],
     href: "https://headsortailshero.com"
   },
   {
     shape: "perfume",
-    title: "Scentcloud",
-    text: "An app. Not finished yet."
+    title: "SCENTCLOUD",
+    lines: ["AN APP.", "NOT FINISHED YET."]
   }
 ];
 
-/* The chart hanging on the end of the hospital bed. Tap it to pick it up, then
-   tap a line to turn the page to a message form. */
+/* The chart hanging on the end of the hospital bed. Tap it to read it, then
+   tap any one of the four lines to open a message form.
+
+   `lines` is what is written on the paper and what the four tappable rows are.
+   `topics` is the longer version of each, used as the subject of the email —
+   same order, same length. */
 export const CLIPBOARD = {
-  eyebrow: "RLDatix",
-  title: "Making Health and Care Safer",
-  lede: "Pick a line to send me a message.",
-  lines: [
-    "Risk & Safety",
-    "Policy & Governance",
-    "Workforce & People",
-    "Data & Archival"
-  ]
+  brand: "RLDATIX",
+  title: "MAKING HEALTH",
+  title2: "AND CARE SAFER",
+  lines: ["RISK", "POLICY", "WORKFORCE", "DATA"],
+  topics: ["Risk & Safety", "Policy & Governance", "Workforce & People", "Data & Archival"],
+  foot: "TAP A LINE"
 };
 
 /* Where the form sends. It opens the visitor's own mail app with the fields
@@ -161,13 +133,8 @@ export const CONTACT = {
 };
 
 /* The hourglass on the centre island — one grain of sand per visit, which is
-   where this site started. `keepAz` stops the camera swinging round, since an
-   hourglass in the middle of the ring has no front to face. */
+   where this site started. The count in the header is the same number. */
 export const JAR_ZONE = {
   id: "hourglass",
-  label: "The hourglass",
-  eyebrow: "Visitors",
-  title: "One grain per visit",
-  lede: "The level in the lower bulb is the visitor count. Logarithmic, so it never quite fills.",
-  keepAz: true
+  label: "The hourglass"
 };
