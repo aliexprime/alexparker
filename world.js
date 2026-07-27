@@ -15,7 +15,7 @@
 ============================================================================= */
 
 import * as THREE from "./vendor/three.module.min.js";
-import { ZONES, JAR_ZONE, BOARD, CHEST } from "./content.js";
+import { ZONES, JAR_ZONE, BOARD, CHEST, CLIPBOARD, CONTACT } from "./content.js";
 
 /* ---- Palette ---------------------------------------------------------------
    Muted and warm, so a room full of colour still sits quietly on paper. */
@@ -39,13 +39,16 @@ const C = {
   pot:       0xb9714f,
   fabric:    0xc3b096,
 
+  rld:       0x2f9e7a,
+  rldDark:   0x24785d,
+  rldLight:  0x6fcaa6,
   clinFloor: 0xdde5e4,
   clinPanel: 0xbcd0d1,
   bedFrame:  0x99a2a7,
   mattress:  0xf0efea,
-  blanket:   0x5b99a1,
-  blanket2:  0x477f87,
-  screenTeal:0x86d9c8,
+  blanket:   0x3a9e7f,
+  blanket2:  0x2b7c62,
+  screenTeal:0x6fd6ab,
 
   invFloor:  0xded7c7,
   vault:     0x878f94,
@@ -315,6 +318,9 @@ function walk(k) {
 ============================================================================= */
 
 const F = 0.35;           // the top surface of an island: props sit on this
+// How far a selected island floats above the ring. Focus targets are measured
+// off the geometry, which is authored before the float, so both need this.
+const FOCUS_LIFT = 0.2;
 const ISLAND = 7.2;
 
 /** A floating slab, stepped underneath so it reads as an object not a plane. */
@@ -413,6 +419,9 @@ function monitor(b, g, x, y, z, w, h, ry, screenColor) {
 ============================================================================= */
 
 const BED_X = -0.35, BED_Z = 0.15;
+// Centre of the chart hanging off the footboard — also where the camera aims
+// when you tap it, so the geometry and the focus target can never drift apart.
+const CHART_Y = F + 0.6;
 
 function buildRLDatix(b, g) {
   island(b, ISLAND, C.clinFloor);
@@ -422,9 +431,11 @@ function buildRLDatix(b, g) {
 
   // Low headwall: reads as a bay without walling the scene off.
   b.box(bx, F, bz - 1.62, 2.7, 0.86, 0.14, C.clinPanel);
-  b.box(bx, F + 0.86, bz - 1.62, 2.8, 0.08, 0.2, 0xa9c0c1);
+  b.box(bx, F + 0.86, bz - 1.62, 2.8, 0.19, 0.2, C.rld);
+  b.box(bx, F + 0.84, bz - 1.62, 2.8, 0.03, 0.21, C.rldDark);
+  textXY(b, "RLDATIX", bx - 0.46, F + 1.02, bz - 1.36, 0.022, C.paper);
   b.box(bx + 0.95, F + 0.5, bz - 1.5, 0.56, 0.4, 0.1, C.white);
-  g.box(bx + 0.95, F + 0.56, bz - 1.44, 0.46, 0.28, 0.02, 0x1f4a4a);
+  g.box(bx + 0.95, F + 0.56, bz - 1.44, 0.46, 0.28, 0.02, 0x123c31);
   b.box(bx - 0.9, F + 0.52, bz - 1.5, 0.4, 0.28, 0.1, 0xdfe9e0);
   b.box(bx - 0.9, F + 0.6, bz - 1.44, 0.09, 0.09, 0.04, C.metal);
   b.box(bx - 0.74, F + 0.6, bz - 1.44, 0.09, 0.09, 0.04, C.metal);
@@ -443,7 +454,22 @@ function buildRLDatix(b, g) {
   b.box(bx, frameY, bz + 1.2, 1.06, 0.36, 0.07, C.metal);
   b.box(bx - 0.55, frameY + 0.16, bz + 0.2, 0.05, 0.26, 1.3, C.metal);
   b.box(bx + 0.55, frameY + 0.16, bz + 0.2, 0.05, 0.26, 1.3, C.metal);
-  b.box(bx + 0.4, frameY + 0.36, bz + 1.18, 0.3, 0.02, 0.22, C.paper);
+  // Chart hanging off the end of the bed — a focus target of its own.
+  const cbY = CHART_Y - 0.3;
+  b.box(bx, cbY, bz + 1.4, 0.46, 0.6, 0.03, C.woodDark);
+  b.box(bx, cbY + 0.03, bz + 1.42, 0.39, 0.5, 0.02, C.paper);
+  b.box(bx, cbY + 0.46, bz + 1.42, 0.39, 0.07, 0.025, C.rld);
+  b.box(bx, cbY + 0.56, bz + 1.4, 0.2, 0.07, 0.06, C.metal);
+  textXY(b, "RLDATIX", bx - 0.147, cbY + 0.52, bz + 1.4425, 0.0072, C.paper);
+  // The four lines the panel offers, written on the paper as well, so zooming
+  // in on the chart shows the same thing the panel does.
+  const CHART_ROWS = ["RISK", "POLICY", "WORKFORCE", "DATA"];
+  for (let i = 0; i < CHART_ROWS.length; i++) {
+    const ry = cbY + 0.41 - i * 0.095;
+    b.box(bx - 0.185, ry - 0.032, bz + 1.435, 0.03, 0.03, 0.01, 0xb4bcb9);
+    b.box(bx - 0.18, ry - 0.027, bz + 1.44, 0.02, 0.02, 0.01, C.rld);
+    textXY(b, CHART_ROWS[i], bx - 0.145, ry, bz + 1.4375, 0.0052, 0x4a5250);
+  }
 
   // IV pole.
   b.box(bx - 1.35, F, bz - 0.5, 0.3, 0.05, 0.3, C.metalDark);
@@ -454,7 +480,7 @@ function buildRLDatix(b, g) {
   // Workstation on wheels.
   b.box(2.15, F + 0.02, 1.35, 0.62, 0.7, 0.5, C.white, -0.4);
   b.box(2.15, F, 1.35, 0.5, 0.06, 0.4, C.metalDark, -0.4);
-  monitor(b, g, 2.15, F + 0.72, 1.35, 0.62, 0.44, -0.4, 0x24506b);
+  monitor(b, g, 2.15, F + 0.72, 1.35, 0.62, 0.44, -0.4, 0x15453a);
   b.box(2.15, F + 0.72, 1.58, 0.44, 0.03, 0.16, 0xd6d6d0, -0.4);
 
   // Tall things live on the side edges only.
@@ -501,9 +527,10 @@ function animRLDatix(group) {
     trace.add(m);
     bars.push(m);
   }
-  ups.push(function (t, dt, amt) {
+  ups.push(function (t, dt, amt, idle) {
+    const a = Math.max(amt, idle);
     for (let i = 0; i < bars.length; i++) {
-      bars[i].position.y = ecgWave(t * 0.75 - i * 0.055) * 0.10 * amt;
+      bars[i].position.y = ecgWave(t * 0.75 - i * 0.055) * 0.10 * a;
     }
   });
 
@@ -511,8 +538,8 @@ function animRLDatix(group) {
   const drop = part(b => b.box(0, -0.025, 0, 0.045, 0.05, 0.045, 0xbcd6e0));
   drop.castShadow = false;
   group.add(drop);
-  ups.push(function (t, dt, amt) {
-    drop.visible = amt > 0.4;
+  ups.push(function (t, dt, amt, idle) {
+    drop.visible = Math.max(amt, idle) > 0.4;
     if (!drop.visible) return;
     const p = (t * 0.75) % 1;
     drop.position.set(BED_X - 1.35, F + 1.28 - p * 0.52, BED_Z - 0.5);
@@ -530,10 +557,11 @@ function animRLDatix(group) {
     dash.add(m);
     dashBars.push(m);
   }
-  ups.push(function (t, dt, amt) {
+  ups.push(function (t, dt, amt, idle) {
+    const a = Math.max(amt, idle);
     for (let i = 0; i < dashBars.length; i++) {
       const h = 0.05 + walk(t * 0.5 + i * 3.7) * 0.26;
-      dashBars[i].scale.y = 0.04 + h * amt;
+      dashBars[i].scale.y = 0.04 + h * a;
     }
   });
 
@@ -678,12 +706,13 @@ function animInvesting(group) {
     chart.add(m);
     candles.push(m);
   }
-  ups.push(function (t, dt, amt) {
+  ups.push(function (t, dt, amt, idle) {
+    const a = Math.max(amt, idle);
     for (let i = 0; i < candles.length; i++) {
       const k = t * 0.6 + i * 0.55;
       const h = 0.04 + walk(k) * 0.22;
-      candles[i].scale.y = 0.03 + h * amt;
-      candles[i].position.y = -0.16 + walk(k * 0.5 + 11) * 0.2 * amt;
+      candles[i].scale.y = 0.03 + h * a;
+      candles[i].position.y = -0.16 + walk(k * 0.5 + 11) * 0.2 * a;
     }
   });
 
@@ -697,8 +726,8 @@ function animInvesting(group) {
     b.box(0, 0.035, 0, 0.48, 0.012, 0.24, 0xa3bd90);
   });
   press.add(note);
-  ups.push(function (t, dt, amt) {
-    note.visible = amt > 0.35;
+  ups.push(function (t, dt, amt, idle) {
+    note.visible = Math.max(amt, idle) > 0.35;
     if (!note.visible) return;
     const p = (t * 0.45) % 1;
     const slide = Math.min(1, p / 0.6);
@@ -799,9 +828,10 @@ function animBJJ(group) {
     b.cyl(0, -0.34, 0, 0.28, 0.28, 0.12, 10, C.bagDark);
   }));
 
-  return [function (t, dt, amt) {
-    pivot.rotation.x = amt * (Math.sin(t * 2.1) * 0.16 + Math.sin(t * 1.31 + 1.2) * 0.06);
-    pivot.rotation.z = amt * Math.sin(t * 1.7 + 0.6) * 0.05;
+  return [function (t, dt, amt, idle) {
+    const a = Math.max(amt, idle);
+    pivot.rotation.x = a * (Math.sin(t * 2.1) * 0.16 + Math.sin(t * 1.31 + 1.2) * 0.06);
+    pivot.rotation.z = a * Math.sin(t * 1.7 + 0.6) * 0.05;
   }];
 }
 
@@ -898,8 +928,9 @@ function animMusic(group) {
     group.add(p);
     platters.push(p);
   }
-  ups.push(function (t, dt, amt) {
-    for (const p of platters) p.rotation.y += dt * (0.35 + 3.1 * amt);
+  ups.push(function (t, dt, amt, idle) {
+    const a = Math.max(amt, idle);
+    for (const p of platters) p.rotation.y += dt * (0.35 + 3.1 * a);
   });
 
   // Mixer meters.
@@ -913,10 +944,11 @@ function animMusic(group) {
     meterRoot.add(m);
     meters.push(m);
   }
-  ups.push(function (t, dt, amt) {
+  ups.push(function (t, dt, amt, idle) {
+    const a = Math.max(amt, idle);
     for (let i = 0; i < meters.length; i++) {
       const level = walk(t * 3.4 + i * 5.1);
-      meters[i].scale.y = 0.02 + level * 0.1 * amt;
+      meters[i].scale.y = 0.02 + level * 0.1 * a;
     }
   });
 
@@ -934,8 +966,9 @@ function animMusic(group) {
     g2.add(woof); g2.add(tweet);
     cones.push(woof, tweet);
   }
-  ups.push(function (t, dt, amt) {
-    const pulse = 1 + Math.sin(t * 8.4) * 0.09 * amt + Math.sin(t * 3.1) * 0.05 * amt;
+  ups.push(function (t, dt, amt, idle) {
+    const a = Math.max(amt, idle);
+    const pulse = 1 + Math.sin(t * 8.4) * 0.09 * a + Math.sin(t * 3.1) * 0.05 * a;
     for (const c of cones) c.scale.set(pulse, 1, pulse);
   });
 
@@ -1090,9 +1123,12 @@ function animProjects(group, def, zone) {
     toys.add(mesh);
   }
 
-  ups.push(function (t, dt, amt) {
+  ups.push(function (t, dt, amt, idle) {
     // A touch past the stop, then back — a lid thrown open, not eased open.
-    pivot.rotation.x = -1.85 * amt - Math.sin(amt * Math.PI) * 0.16;
+    // Idle only creaks it: whatever is inside stays a surprise until it is
+    // actually opened.
+    pivot.rotation.x = -1.85 * amt - Math.sin(amt * Math.PI) * 0.16
+                     - idle * 0.1 * (1 - amt);
     for (const m of toys.children) {
       const home = m.userData.home;
       const wobble = Math.sin(t * 1.15 + m.userData.phase) * 0.09;
@@ -1152,8 +1188,9 @@ function animAbout(group) {
   const bulb = part(b => b.rock(0, 0, 0, 0.09, C.lampGlow), true);
   bulb.position.set(-0.94, topY + 0.42, 0.3);
   group.add(bulb);
-  ups.push(function (t, dt, amt) {
-    const s = 0.55 + amt * (0.75 + Math.sin(t * 2.6) * 0.07 + Math.sin(t * 7.3) * 0.03);
+  ups.push(function (t, dt, amt, idle) {
+    const a = Math.max(amt, idle);
+    const s = 0.55 + a * (0.75 + Math.sin(t * 2.6) * 0.07 + Math.sin(t * 7.3) * 0.03);
     bulb.scale.setScalar(s);
   });
 
@@ -1168,14 +1205,15 @@ function animAbout(group) {
     group.add(m);
     puffs.push(m);
   }
-  ups.push(function (t, dt, amt) {
+  ups.push(function (t, dt, amt, idle) {
+    const a = Math.max(amt, idle);
     for (let i = 0; i < puffs.length; i++) {
       const p = ((t * 0.42) + i / puffs.length) % 1;
       const m = puffs[i];
       m.position.y = topY + 0.18 + p * 0.42;
       m.position.x = 0.58 + Math.sin(p * 5.2 + i) * 0.05;
       m.scale.setScalar(0.5 + p * 1.1);
-      m.material.opacity = amt * 0.5 * Math.sin(p * Math.PI);
+      m.material.opacity = a * 0.5 * Math.sin(p * Math.PI);
     }
   });
 
@@ -1430,6 +1468,7 @@ function addDetail(zone, lx, ly, lz, w, h, fitH, fitV, el, act) {
   detail.act = act || null;
   hit.userData.detail = detail;
   detailHits.push(hit);
+  return detail;
 }
 
 function addZone(def, x, z, angle, hitW, hitH) {
@@ -1462,6 +1501,9 @@ function addZone(def, x, z, angle, hitW, hitH) {
     lift: 0,
     focusAz: def.keepAz ? null : angle,
     always: !!spec.always,
+    // Where this island sits in the idle cycle. Spaced by the golden ratio so
+    // no two wake at the same moment and the order never looks like a queue.
+    idlePhase: (zones.length * 0.6180339887) % 1,
     updaters: []
   };
   hit.userData.zone = zone;
@@ -1476,9 +1518,23 @@ function addZone(def, x, z, angle, hitW, hitH) {
 ZONES.forEach(function (def, i) {
   const a = (i / ZONES.length) * Math.PI * 2;
   const zone = addZone(def, Math.sin(a) * RING_R, Math.cos(a) * RING_R, a, ISLAND, 3.6);
-  if (zone && def.id === "investing") {
+  if (!zone) return;
+
+  if (def.id === "investing") {
     addDetail(zone, BOARD_X, BOARD_Y, BOARD_Z, BOARD_W, BOARD_H, 3.05, 1.75, 0.3,
                function () { boardTurned = boardTurned ? 0 : 1; touched(); });
+  }
+
+  // The chart on the end of the bed: tap it and it comes up as the clipboard,
+  // whose four lines each turn the page over to a message form.
+  if (def.id === "rldatix") {
+    const d = addDetail(zone, BED_X, CHART_Y, BED_Z + 1.42, 0.62, 0.8, 1.0, 0.74, 0.24);
+    d.panel = {
+      eyebrow: CLIPBOARD.eyebrow,
+      title: CLIPBOARD.title,
+      lede: CLIPBOARD.lede,
+      choices: CLIPBOARD.lines
+    };
   }
 });
 addZone(JAR_ZONE, 0, 0, 0, 4.8, 5.0);
@@ -1683,6 +1739,7 @@ const elTitle = document.getElementById("panelTitle");
 const elLede = document.getElementById("panelLede");
 const elText = document.getElementById("panelText");
 const elItems = document.getElementById("panelItems");
+const elChoices = document.getElementById("panelChoices");
 const elTodo = document.getElementById("panelTodo");
 
 let activeZone = null;
@@ -1720,8 +1777,14 @@ function focusDetail(d) {
   want.fitV = portrait ? d.fitV * 1.2 : d.fitV;
   want.scale = 1;
   // A detail attached to something that moves reads its position now, once,
-  // rather than every frame — otherwise the camera rides the bob.
-  if (d.obj) d.obj.getWorldPosition(want.target); else want.target.copy(d.pos);
+  // rather than every frame — otherwise the camera rides the bob. A static one
+  // was measured before the island floats up, so add the float back on.
+  if (d.obj) {
+    d.obj.getWorldPosition(want.target);
+  } else {
+    want.target.copy(d.pos);
+    want.target.y += FOCUS_LIFT;
+  }
 
   fillPanel(d.panel || d.zone.def);
   document.body.classList.add("panel-open");
@@ -1752,6 +1815,7 @@ function focusZone(zone) {
 }
 
 function fillPanel(d) {
+  showMainPage();
   elEyebrow.textContent = d.eyebrow || "";
   elTitle.textContent = d.title || d.label;
   elLede.textContent = d.lede || "";
@@ -1797,9 +1861,117 @@ function fillPanel(d) {
     elItems.appendChild(row);
   }
 
+  elChoices.innerHTML = "";
+  elChoices.hidden = !(d.choices && d.choices.length);
+  for (const line of d.choices || []) {
+    const btn = document.createElement("button");
+    btn.className = "choice";
+    btn.type = "button";
+    btn.textContent = line;
+    btn.addEventListener("click", function () { openForm(line); });
+    elChoices.appendChild(btn);
+  }
+
   elTodo.hidden = !d.todo;
   elTodo.textContent = d.todo || "";
 }
+
+/* =============================================================================
+   The message form — the page behind the clipboard
+
+   There is no server here: this is a static site, so Send hands the message to
+   the visitor's own mail app with everything filled in. Nothing is posted
+   anywhere, and nothing is stored.
+============================================================================= */
+
+const panelBody = document.getElementById("panelBody");
+const pageMain = document.getElementById("pageMain");
+const pageForm = document.getElementById("pageForm");
+const elFormTitle = document.getElementById("formTitle");
+const elFormNote = document.getElementById("formNote");
+const contactForm = document.getElementById("contactForm");
+const fName = document.getElementById("fName");
+const fEmail = document.getElementById("fEmail");
+const fMsg = document.getElementById("fMsg");
+const NOTE_IDLE = elFormNote.textContent;
+
+let turning = false;
+
+/** The page turn: the outgoing page swings away on its spine, the incoming one
+    swings in behind it. Swapped at the halfway point so they never overlap. */
+function turnPage(to) {
+  const from = to === pageForm ? pageMain : pageForm;
+  if (turning || from.hidden) return;
+  turning = true;
+  document.body.classList.add("turning");
+  setTimeout(function () {
+    document.body.classList.remove("turning");
+    from.hidden = true;
+    to.hidden = false;
+    to.classList.remove("arriving");
+    void to.offsetWidth;                 // restart the animation
+    to.classList.add("arriving");
+    panelBody.scrollTop = 0;
+    turning = false;
+  }, 220);
+}
+
+/** Back to the front of the panel with no animation — used whenever the panel
+    is refilled, so a new section never opens on someone else's form. */
+function showMainPage() {
+  document.body.classList.remove("turning");
+  turning = false;
+  pageForm.hidden = true;
+  pageMain.hidden = false;
+  pageMain.classList.remove("arriving");
+  clearNote();
+}
+
+function clearNote() {
+  elFormNote.className = "field-note";
+  elFormNote.textContent = NOTE_IDLE;
+}
+
+function openForm(topic) {
+  elFormTitle.textContent = topic;
+  contactForm.dataset.topic = topic;
+  clearNote();
+  turnPage(pageForm);
+}
+
+document.getElementById("formBack").addEventListener("click", function () {
+  turnPage(pageMain);
+});
+
+contactForm.addEventListener("submit", function (e) {
+  e.preventDefault();
+  const name = fName.value.trim();
+  const email = fEmail.value.trim();
+  const msg = fMsg.value.trim();
+
+  const bad = !name ? fName
+            : !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? fEmail
+            : !msg ? fMsg
+            : null;
+  if (bad) {
+    elFormNote.className = "field-note bad";
+    elFormNote.textContent = bad === fEmail
+      ? "That email address does not look right."
+      : "Fill in all three and it will open your mail app.";
+    bad.focus();
+    return;
+  }
+
+  const topic = contactForm.dataset.topic || CLIPBOARD.title;
+  const body = msg + "\n\n--\n" + name + "\n" + email;
+  const href = "mailto:" + CONTACT.email
+    + "?subject=" + encodeURIComponent(topic + " — alexparker.au")
+    + "&body=" + encodeURIComponent(body);
+
+  elFormNote.className = "field-note";
+  elFormNote.textContent = "Opening your email app…";
+  window.location.href = href;
+});
 
 function closePanel() {
   if (!activeZone) return;
@@ -1818,7 +1990,10 @@ function closePanel() {
 
 document.getElementById("panelClose").addEventListener("click", closePanel);
 document.addEventListener("keydown", function (e) {
-  if (e.key === "Escape") closePanel();
+  if (e.key !== "Escape") return;
+  // On the form, Escape turns the page back rather than throwing the whole
+  // panel away with a half-typed message in it.
+  if (!pageForm.hidden) turnPage(pageMain); else closePanel();
 });
 
 function touched() { document.body.classList.add("touched"); }
@@ -1948,6 +2123,12 @@ window.addEventListener("orientationchange", resize);
 
 let last = performance.now();
 
+// How long one island waits for its turn to stir, and how much of that turn it
+// spends awake. Seven islands over eleven seconds means something somewhere is
+// always moving, without the whole world twitching at once.
+const IDLE_PERIOD = 11;
+const IDLE_WAKE = 0.3;
+
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, (now - last) / 1000);
@@ -1971,12 +2152,18 @@ function frame(now) {
     zone.amt += ((selected ? 1 : 0) - zone.amt) * ease;
 
     // Hover floats an island, which is the only cue that it can be selected.
-    const liftTo = (!activeZone && hovered === zone) ? 0.34 : (selected ? 0.2 : 0);
+    const liftTo = (!activeZone && hovered === zone) ? 0.34 : (selected ? FOCUS_LIFT : 0);
     zone.lift += (liftTo - zone.lift) * ease;
     zone.group.position.y = zone.lift;
 
-    if (zone.always || zone.amt > 0.002 || selected) {
-      for (const u of zone.updaters) u(t, dt, zone.amt);
+    // Nothing is selected most of the time, and a still world looks broken. So
+    // each island gets a turn: a slow swell that wakes whatever it animates for
+    // a few seconds, then lets it settle again.
+    const p = (t / IDLE_PERIOD + zone.idlePhase) % 1;
+    const idle = p < IDLE_WAKE ? Math.sin((p / IDLE_WAKE) * Math.PI) * 0.7 : 0;
+
+    if (zone.always || zone.amt > 0.002 || selected || idle > 0.002) {
+      for (const u of zone.updaters) u(t, dt, zone.amt, idle);
     }
   }
 

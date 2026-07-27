@@ -140,6 +140,26 @@ export const CHEST = [
   }
 ];
 
+/* The chart hanging on the end of the hospital bed. Tap it to pick it up, then
+   tap a line to turn the page to a message form. */
+export const CLIPBOARD = {
+  eyebrow: "RLDatix",
+  title: "Making Health and Care Safer",
+  lede: "Pick a line to send me a message.",
+  lines: [
+    "Risk & Safety",
+    "Policy & Governance",
+    "Workforce & People",
+    "Data & Archival"
+  ]
+};
+
+/* Where the form sends. It opens the visitor's own mail app with the fields
+   filled in — a static site has nothing to post to. */
+export const CONTACT = {
+  email: "hello@alexparker.au"
+};
+
 /* The hourglass on the centre island — one grain of sand per visit, which is
    where this site started. `keepAz` stops the camera swinging round, since an
    hourglass in the middle of the ring has no front to face. */
