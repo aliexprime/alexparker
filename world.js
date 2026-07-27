@@ -588,21 +588,9 @@ function buildInvesting(b, g) {
   let row = BOARD_Y + BOARD_H / 2 - 0.16;
 
   textXY(b, BOARD.heading, left, row, fz, fpx, C.boardInk2);
-  b.box(left, row - fpx * (GLYPH_H + 1.1), fz, BOARD_W - 0.42, 0.022, 0.02, C.boardInk2);
-  row -= lineH * 1.4;
-
-  // Tickers near the top, where the desk in front cannot cover them.
-  let tx = left;
-  for (let i = 0; i < BOARD.tickers.length; i++) {
-    const end = textXY(b, BOARD.tickers[i], tx, row, fz, fpx, C.boardInk2);
-    const r = rng(i * 17 + 3);
-    for (let k = 0; k < 7; k++) {
-      const h = 0.025 + r() * 0.1;
-      b.box(end + 0.04 + k * 0.032, row - fpx * GLYPH_H + h / 2, fz, 0.024, h, 0.02, C.boardInk2);
-    }
-    tx = end + 0.04 + 7 * 0.032 + 0.14;
-  }
-  row -= lineH * 1.5;
+  // box() centres on x, so the rule is drawn from the middle of the board.
+  b.box(wx, row - fpx * (GLYPH_H + 1.1), fz, BOARD_W - 0.42, 0.022, 0.02, C.boardInk2);
+  row -= lineH * 1.6;
 
   for (const q of BOARD.questions) {
     const lines = wrapText(q, cols - 2);

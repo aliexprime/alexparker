@@ -93,8 +93,8 @@ export const ZONES = [
   }
 ];
 
-/* What is written on the whiteboard in the investing scene. Questions first,
-   then the tickers along the bottom. Tap the board itself to read it all. */
+/* What is written on the whiteboard in the investing scene. Tap the board
+   itself to read it. Long lines wrap to the board on their own. */
 export const BOARD = {
   heading: "WHAT ACTUALLY MOVES IT",
   questions: [
@@ -102,8 +102,7 @@ export const BOARD = {
     "MORE COMPUTE = BETTER OUTCOMES?",
     "WHO PAYS FOR THE DATACENTRE?",
     "RATES DOWN - THEN WHAT?"
-  ],
-  tickers: ["XJO", "SPX", "NDX"]
+  ]
 };
 
 /* The hourglass on the centre island — one grain of sand per visit, which is
