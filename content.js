@@ -60,10 +60,10 @@ export const ZONES = [
       "It is the one thing on this page with no deliverable. You turn up, you get better slowly, and the only record is that the same people keep catching you in the same places until they don't."
     ],
     items: [
-      { name: "Brazilian jiu-jitsu", tag: "Current", note: "Training on the mats now." },
+      { name: "Brazilian jiu-jitsu", tag: "White belt, two stripes", note: "Training now." },
       { name: "Taekwondo", tag: "As a kid", note: "Where it started." }
     ],
-    todo: "Placeholder. Add your belt, your gym, how long you have trained — I have deliberately not invented any of it. Delete this line once you have."
+    todo: "Partly placeholder. The belt is yours; the gym and how long you have trained are still missing. Add them and delete this line."
   },
 
   {

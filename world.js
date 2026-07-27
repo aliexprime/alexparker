@@ -63,10 +63,6 @@ const C = {
   bagLeather:0x8a5a45,
   bagDark:   0x6f4636,
   beltWhite: 0xe8e5dc,
-  beltBlue:  0x3f6fa8,
-  beltPurple:0x7a5f9e,
-  beltBrown: 0x7a5334,
-  beltBlack: 0x2f2c2a,
   beltRed:   0xb5433c,
   gi:        0xe4e2da,
 
@@ -590,27 +586,31 @@ function buildBJJ(b, g) {
   b.box(BAG_X + 0.38, F + 2.4, BAG_Z, 0.86, 0.12, 0.14, C.metal);
   b.box(BAG_X + 0.78, F + 2.34, BAG_Z, 0.08, 0.08, 0.08, C.metalDark);
 
-  // Belt rack along the back, so the belts face out. White through black —
-  // and on the end, the taekwondo belt that started it.
+  // Belt rack along the back, so the belts face out. Two belts on it, both
+  // real: the white belt being worn now, and the taekwondo belt from before.
   const rx = 1.35, rz = -3.05;
   b.box(rx - 1.15, F, rz, 0.14, 1.9, 0.14, C.woodDark);
   b.box(rx + 1.15, F, rz, 0.14, 1.9, 0.14, C.woodDark);
   b.box(rx, F + 1.78, rz, 2.4, 0.1, 0.1, C.wood);
-  const belts = [C.beltWhite, C.beltBlue, C.beltPurple, C.beltBrown, C.beltBlack];
-  for (let i = 0; i < belts.length; i++) {
-    const x = rx - 0.86 + i * 0.32;
-    b.box(x, F + 1.02, rz, 0.19, 0.72, 0.07, belts[i]);
-    b.box(x, F + 1.02, rz, 0.21, 0.1, 0.09, 0x2f2c2a);
-  }
-  b.box(rx + 0.95, F + 1.02, rz, 0.19, 0.72, 0.07, C.beltRed);   // taekwondo
-  b.box(rx + 0.95, F + 1.34, rz, 0.21, 0.16, 0.09, 0x2f2c2a);
+
+  // White belt, two stripes taped across the bar.
+  const wx = rx - 0.42;
+  b.box(wx, F + 1.02, rz, 0.22, 0.72, 0.07, C.beltWhite);
+  b.box(wx, F + 1.04, rz, 0.24, 0.26, 0.09, 0x2f2c2a);
+  b.box(wx - 0.055, F + 1.08, rz, 0.04, 0.19, 0.11, C.beltWhite);
+  b.box(wx + 0.015, F + 1.08, rz, 0.04, 0.19, 0.11, C.beltWhite);
+
+  // Taekwondo belt, hung beside it.
+  b.box(rx + 0.5, F + 1.02, rz, 0.22, 0.72, 0.07, C.beltRed);
+  b.box(rx + 0.5, F + 1.34, rz, 0.24, 0.16, 0.09, 0x2f2c2a);
 
   // A gi folded on a bench, off the mat.
   b.box(0.3, F, 3.0, 2.0, 0.42, 0.55, C.woodDark);
   b.box(0.3, F + 0.42, 3.0, 2.1, 0.08, 0.62, C.wood);
   b.box(-0.2, F + 0.5, 3.0, 0.6, 0.16, 0.42, C.gi);
   b.box(-0.2, F + 0.66, 3.0, 0.56, 0.1, 0.38, 0xd6d4cb);
-  b.box(0.26, F + 0.5, 3.0, 0.2, 0.08, 0.32, C.beltBlue);
+  b.box(0.26, F + 0.5, 3.0, 0.2, 0.08, 0.32, C.beltWhite);
+  b.box(0.26, F + 0.5, 3.0, 0.09, 0.09, 0.34, 0x2f2c2a);
   b.cyl(1.0, F + 0.5, 3.0, 0.09, 0.09, 0.28, 8, 0x7fb0c4);
   b.cyl(1.0, F + 0.78, 3.0, 0.05, 0.05, 0.06, 8, C.metalDark);
 
@@ -1456,7 +1456,23 @@ function pickNumber(list) {
   return null;
 }
 
+// Looking at the site locally should not add grains to the real jar, so a
+// preview keeps its own private tally and never touches the hosted counter.
+const PREVIEW = location.protocol === "file:" ||
+  /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])$/.test(location.hostname);
+
+function localTally() {
+  let v = 0;
+  try { v = parseInt(localStorage.getItem(LOCAL_KEY) || "0", 10); } catch (err) {}
+  if (!isFinite(v) || v < 0) v = 0;
+  v += 1;
+  try { localStorage.setItem(LOCAL_KEY, String(v)); } catch (err) {}
+  return Math.max(1, v);
+}
+
 function fetchCount() {
+  if (PREVIEW) return Promise.resolve(localTally());
+
   const ctrl = new AbortController();
   const timer = setTimeout(function () { ctrl.abort(); }, 4500);
 
@@ -1475,14 +1491,9 @@ function fetchCount() {
       return v;
     })
     .catch(function () {
-      // Offline or the counter is down: keep a per-browser tally so the jar
-      // still fills and nothing looks broken.
-      let v = 0;
-      try { v = parseInt(localStorage.getItem(LOCAL_KEY) || "0", 10); } catch (err) {}
-      if (!isFinite(v) || v < 0) v = 0;
-      v += 1;
-      try { localStorage.setItem(LOCAL_KEY, String(v)); } catch (err) {}
-      return Math.max(1, v);
+      // Offline or the counter is down: fall back to the per-browser tally so
+      // the jar still fills and nothing looks broken.
+      return localTally();
     });
 }
 
