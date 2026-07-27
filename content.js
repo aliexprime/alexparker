@@ -77,7 +77,7 @@ export const ZONES = [
       { name: "Project three", tag: "Year" },
       { name: "Project four", tag: "Year" }
     ],
-    todo: "Placeholder names. What is actually in the chest is the CHEST list at the bottom of this file."
+    todo: "Open the chest and tap any object in it. What is in there, and what each one says, is the CHEST list at the bottom of this file \u2014 all placeholder for now."
   },
 
   {
@@ -116,9 +116,33 @@ export const BOARD = {
   }
 };
 
-/* What is in the toy chest, in order. Known shapes: coin, football (AFL),
-   perfume, rocket, cube, ball, controller, brush. */
-export const CHEST = ["coin", "football", "perfume", "cube"];
+/* What is in the toy chest, in order. Each one turns and bobs while the chest
+   is open, and can be tapped on its own to read what it is.
+
+   Known shapes: coin, football (AFL), perfume, rocket, cube, ball, controller,
+   brush. Add a case to makeToy in world.js for anything else. */
+export const CHEST = [
+  {
+    shape: "coin",
+    title: "The coin",
+    text: "Placeholder. Say what this one is here."
+  },
+  {
+    shape: "football",
+    title: "The Sherrin",
+    text: "Placeholder. Say what this one is here."
+  },
+  {
+    shape: "perfume",
+    title: "The bottle",
+    text: "Placeholder. Say what this one is here."
+  },
+  {
+    shape: "cube",
+    title: "Not decided",
+    text: "A fourth object was going to go here. Change its shape and words in CHEST."
+  }
+];
 
 /* The hourglass on the centre island — one grain of sand per visit, which is
    where this site started. `keepAz` stops the camera swinging round, since an

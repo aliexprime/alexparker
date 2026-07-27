@@ -1044,7 +1044,7 @@ function makeToy(kind, i) {
   return solidMesh(b);
 }
 
-function animProjects(group) {
+function animProjects(group, def, zone) {
   const ups = [];
 
   const pivot = new THREE.Group();
@@ -1065,8 +1065,19 @@ function animProjects(group) {
   const kinds = (CHEST && CHEST.length) ? CHEST : ["cube"];
   const TOY_SCALE = 1.18;
   for (let i = 0; i < Math.min(7, kinds.length); i++) {
-    const mesh = makeToy(kinds[i], i);
+    const entry = kinds[i];
+    const shape = (typeof entry === "string") ? entry : entry.shape;
+    const mesh = makeToy(shape, i);
     mesh.scale.setScalar(TOY_SCALE);
+    if (typeof entry !== "string") {
+      addMovingDetail(zone, mesh, {
+        eyebrow: "In the chest",
+        title: entry.title || shape,
+        lede: entry.text || "",
+        items: null,
+        todo: null
+      });
+    }
     // Laid out across the chest rather than round it, so that nothing ends up
     // hiding behind anything else from the front.
     const n = Math.min(7, kinds.length);
@@ -1077,7 +1088,7 @@ function animProjects(group) {
       y: Math.sin(t * Math.PI) * 0.09
     };
     mesh.userData.phase = i * 0.8;
-    mesh.userData.spin = 0.35 + (i % 3) * 0.2;
+    mesh.userData.spin = 0.34 + (i % 3) * 0.13;
     mesh.position.set(0, -0.34, -0.4);
     toys.add(mesh);
   }
@@ -1087,11 +1098,12 @@ function animProjects(group) {
     pivot.rotation.x = -1.85 * amt - Math.sin(amt * Math.PI) * 0.16;
     for (const m of toys.children) {
       const home = m.userData.home;
-      const wobble = Math.sin(t * 1.8 + m.userData.phase) * 0.05;
+      const wobble = Math.sin(t * 1.15 + m.userData.phase) * 0.09;
       m.position.x += (home.x * amt - m.position.x) * Math.min(1, dt * 5);
       m.position.z += ((home.z * amt) + (1 - amt) * -0.4 - m.position.z) * Math.min(1, dt * 5);
       m.position.y += (((0.82 + home.y + wobble) * amt - 0.34 * (1 - amt)) - m.position.y) * Math.min(1, dt * 5);
-      m.rotation.y += dt * m.userData.spin * (0.15 + amt);
+      m.rotation.y += dt * (0.12 + m.userData.spin * amt);
+      if (m.userData.detail) m.userData.detail.enabled = amt > 0.55;
       m.visible = m.position.y > -0.3;
     }
   });
@@ -1372,6 +1384,29 @@ const zones = [];
 const pickables = [];
 const detailHits = [];
 
+/** A hit box carried by a moving object, so it can be tapped where it is. */
+function addMovingDetail(zone, mesh, panel) {
+  const hit = new THREE.Mesh(
+    new THREE.BoxGeometry(0.66, 0.66, 0.66),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  mesh.add(hit);
+  const detail = {
+    zone: zone,
+    obj: mesh,
+    az: zone.group.rotation.y + 0.34,
+    el: 0.5,
+    fitH: 1.65,
+    fitV: 1.02,
+    enabled: false,
+    panel: panel
+  };
+  hit.userData.detail = detail;
+  mesh.userData.detail = detail;
+  detailHits.push(hit);
+  return detail;
+}
+
 /** A single object inside a scene worth looking at on its own. Local coords. */
 function addDetail(zone, lx, ly, lz, w, h, fitH, fitV, el, act) {
   const hit = new THREE.Mesh(
@@ -1430,11 +1465,14 @@ function addZone(def, x, z, angle, hitW, hitH) {
     lift: 0,
     focusAz: def.keepAz ? null : angle,
     always: !!spec.always,
-    updaters: spec.anim ? spec.anim(group, def) : []
+    updaters: []
   };
   hit.userData.zone = zone;
   zones.push(zone);
   pickables.push(hit);
+
+  // Built after the zone exists, so animations can register details on it.
+  if (spec.anim) zone.updaters = spec.anim(group, def, zone);
   return zone;
 }
 
@@ -1613,7 +1651,11 @@ function pick(px, py) {
   ndc.y = -(py / cssH) * 2 + 1;
   ray.setFromCamera(ndc, camera);
   const dh = ray.intersectObjects(detailHits, false);
-  if (dh.length) return { detail: dh[0].object.userData.detail, zone: dh[0].object.userData.detail.zone };
+  for (const hit of dh) {
+    const d = hit.object.userData.detail;
+    if (d.enabled === false) continue;      // e.g. objects inside a shut chest
+    return { detail: d, zone: d.zone };
+  }
   const zh = ray.intersectObjects(pickables, false);
   return zh.length ? { zone: zh[0].object.userData.zone } : null;
 }
@@ -1680,9 +1722,11 @@ function focusDetail(d) {
   want.fitH = portrait ? d.fitH * 0.78 : d.fitH;
   want.fitV = portrait ? d.fitV * 1.2 : d.fitV;
   want.scale = 1;
-  want.target.copy(d.pos);
+  // A detail attached to something that moves reads its position now, once,
+  // rather than every frame — otherwise the camera rides the bob.
+  if (d.obj) d.obj.getWorldPosition(want.target); else want.target.copy(d.pos);
 
-  fillPanel(d.zone.def);
+  fillPanel(d.panel || d.zone.def);
   document.body.classList.add("panel-open");
   touched();
   requestAnimationFrame(applyPanelShift);
