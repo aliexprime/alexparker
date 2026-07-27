@@ -63,7 +63,7 @@ const C = {
   bagLeather:0x8a5a45,
   bagDark:   0x6f4636,
   beltWhite: 0xe8e5dc,
-  beltRed:   0xb5433c,
+  beltBlack: 0x2f2c2a,
   gi:        0xe4e2da,
 
   deckBody:  0x4a4f55,
@@ -93,6 +93,9 @@ const C = {
   sand:      0xd7ae66,
   sandDark:  0xb9884a
 };
+
+// Whiteboard shorthand. Index tickers, not positions — swap in your own.
+const TICKERS = ["XJO", "SPX", "NDX"];
 
 const BOOKS = [0xb5553f, 0x4a7a8c, 0xc9a44c, 0x6b8f5e, 0x8a6b9e, 0xc2725e,
                0x5f7f9e, 0xa8894a, 0x7d9e6b, 0x9e5f5f];
@@ -204,6 +207,44 @@ function clamp(v, a, b) { return v < a ? a : (v > b ? b : v); }
 function loc(x, z, ry, lx, lz) {
   return [x + Math.cos(ry) * lx + Math.sin(ry) * lz,
           z - Math.sin(ry) * lx + Math.cos(ry) * lz];
+}
+
+/* A 3x5 pixel font. Small enough to stay in the aesthetic, big enough to read
+   once you zoom in on a whiteboard. Rows run top to bottom. */
+const FONT3 = {
+  A: "111101111101101", B: "110101110101110", C: "111100100100111",
+  D: "110101101101110", E: "111100110100111", F: "111100110100100",
+  G: "111100101101111", H: "101101111101101", I: "111010010010111",
+  J: "001001001101111", K: "101101110101101", L: "100100100100111",
+  M: "101111111101101", N: "101111111111101", O: "111101101101111",
+  P: "111101111100100", Q: "111101101111001", R: "111101110101101",
+  S: "111100111001111", T: "111010010010010", U: "101101101101111",
+  V: "101101101101010", W: "101101111111101", X: "101101010101101",
+  Y: "101101010010010", Z: "111001010100111",
+  0: "111101101101111", 1: "010110010010111", 2: "111001111100111",
+  3: "111001111001111", 4: "101101111001001", 5: "111100111001111",
+  6: "111100111101111", 7: "111001001001001", 8: "111101111101111",
+  9: "111101111001111", "-": "000000111000000", " ": "000000000000000"
+};
+
+/** Write `str` on a surface facing +z: characters advance along +x, rows down.
+    Every scene faces +z out of the ring, so this is the readable direction. */
+function textXY(b, str, x0, yTop, z, px, color) {
+  let x = x0;
+  for (const ch of str.toUpperCase()) {
+    const glyph = FONT3[ch];
+    if (glyph) {
+      for (let r = 0; r < 5; r++) {
+        for (let c = 0; c < 3; c++) {
+          if (glyph[r * 3 + c] === "1") {
+            b.box(x + c * px, yTop - (r + 1) * px, z, px, px, 0.022, color);
+          }
+        }
+      }
+    }
+    x += px * 4;
+  }
+  return x;
 }
 
 function hash1(n) {
@@ -482,19 +523,30 @@ function buildInvesting(b, g) {
   b.box(1.2, topY, 0.6, 0.2, 0.24, 0.14, C.paper);
   chair(b, 0.35, 2.05, Math.PI, C.woodDark);
 
-  // Whiteboard on an easel, out on the side edge.
-  const wx = 2.9, wz = -0.7;
-  b.boxC(wx - 0.03, F + 1.12, wz, 0.06, 1.15, 2.1, C.board);
-  b.boxC(wx + 0.02, F + 1.12, wz, 0.03, 1.25, 2.2, 0xb8b2a2);
-  for (const [my, mz, mw] of [[0.32, -0.55, 0.9], [0.1, -0.1, 1.2], [-0.16, -0.7, 0.6]]) {
-    b.boxC(wx - 0.07, F + 1.12 + my, wz + mz, 0.02, 0.045, mw, C.boardInk);
+  // Whiteboard on an easel at the back, turned to face out of the ring so it
+  // can actually be read.
+  const wx = 1.7, wz = -2.8;
+  b.boxC(wx, F + 1.14, wz + 0.03, 2.15, 1.2, 0.06, C.board);
+  b.boxC(wx, F + 1.14, wz - 0.02, 2.25, 1.3, 0.03, 0xb8b2a2);
+  for (const lx of [-0.9, 0.9]) {
+    b.boxC(wx + lx, F + 0.56, wz - 0.14, 0.05, 1.12, 0.05, C.woodDark, 0.18, 0, 0);
+    b.boxC(wx + lx, F + 0.56, wz + 0.18, 0.05, 1.12, 0.05, C.woodDark, -0.18, 0, 0);
   }
-  b.boxC(wx - 0.07, F + 0.9, wz + 0.75, 0.02, 0.32, 0.045, C.boardInk2);
-  b.boxC(wx - 0.07, F + 0.82, wz + 0.2, 0.02, 0.045, 0.85, C.boardInk2);
-  for (const lz of [-0.85, 0.85]) {
-    b.boxC(wx + 0.12, F + 0.55, wz + lz, 0.05, 1.1, 0.05, C.woodDark, 0.16, 0, 0);
-    b.boxC(wx - 0.16, F + 0.55, wz + lz, 0.05, 1.1, 0.05, C.woodDark, -0.16, 0, 0);
+
+  // What is actually written on it. Edit TICKERS to change what it says.
+  const fz = wz + 0.075, fpx = 0.038;
+  let row = F + 1.62;
+  for (let i = 0; i < TICKERS.length; i++) {
+    const end = textXY(b, TICKERS[i], wx - 0.88, row, fz, fpx, C.boardInk);
+    const r = rng(i * 17 + 3);
+    for (let k = 0; k < 8; k++) {              // a sparkline beside each one
+      const h = 0.03 + r() * 0.13;
+      b.box(end + 0.08 + k * 0.055, row - 0.19 + h / 2, fz, 0.04, h, 0.02,
+            i === 1 ? C.boardInk2 : C.boardInk);
+    }
+    row -= 0.27;
   }
+  b.boxC(wx - 0.1, F + 0.74, fz, 1.5, 0.035, 0.02, C.boardInk2);
 
   b.box(2.3, F, 1.7, 1.25, 0.42, 0.85, C.woodDark);
   b.box(2.3, F + 0.42, 1.7, 1.35, 0.07, 0.95, C.wood);
@@ -507,10 +559,10 @@ function buildInvesting(b, g) {
     b.box(2.68, coinY + i * 0.1 + 0.02, 1.5, 0.42, 0.05, 0.1, 0xd8cfae, 0.2);
   }
 
-  b.box(0.1, F, -2.5, 1.15, 0.85, 0.8, C.metalDark, 0.18);
-  b.box(0.1, F + 0.85, -2.5, 1.25, 0.16, 0.9, C.metal, 0.18);
-  g.box(0.1, F + 0.66, -2.12, 0.34, 0.12, 0.02, C.screenGrn, 0.18);
-  b.box(0.2, F + 0.3, -1.95, 0.6, 0.05, 0.34, C.money, 0.18);
+  b.box(-0.6, F, -2.45, 1.15, 0.85, 0.8, C.metalDark, 0.18);
+  b.box(-0.6, F + 0.85, -2.45, 1.25, 0.16, 0.9, C.metal, 0.18);
+  g.box(-0.6, F + 0.66, -2.07, 0.34, 0.12, 0.02, C.screenGrn, 0.18);
+  b.box(-0.5, F + 0.3, -1.9, 0.6, 0.05, 0.34, C.money, 0.18);
   pottedPlant(b, -1.0, 2.5, 1.1);
 }
 
@@ -539,7 +591,7 @@ function animInvesting(group) {
 
   // The press keeps running notes out onto the tray.
   const press = new THREE.Group();
-  press.position.set(0.1, 0, -2.5);
+  press.position.set(-0.6, 0, -2.45);
   press.rotation.y = 0.18;
   group.add(press);
   const note = part(b => {
@@ -594,15 +646,17 @@ function buildBJJ(b, g) {
   b.box(rx, F + 1.78, rz, 2.4, 0.1, 0.1, C.wood);
 
   // White belt, two stripes taped across the bar.
-  const wx = rx - 0.42;
-  b.box(wx, F + 1.02, rz, 0.22, 0.72, 0.07, C.beltWhite);
-  b.box(wx, F + 1.04, rz, 0.24, 0.26, 0.09, 0x2f2c2a);
-  b.box(wx - 0.055, F + 1.08, rz, 0.04, 0.19, 0.11, C.beltWhite);
-  b.box(wx + 0.015, F + 1.08, rz, 0.04, 0.19, 0.11, C.beltWhite);
+  const wx = rx - 0.46;
+  b.box(wx, F + 0.98, rz, 0.26, 0.78, 0.08, C.beltWhite);
+  b.box(wx, F + 1.00, rz, 0.28, 0.3, 0.1, C.beltBlack);
+  b.box(wx - 0.068, F + 1.05, rz, 0.05, 0.22, 0.12, C.beltWhite);
+  b.box(wx + 0.018, F + 1.05, rz, 0.05, 0.22, 0.12, C.beltWhite);
 
-  // Taekwondo belt, hung beside it.
-  b.box(rx + 0.5, F + 1.02, rz, 0.22, 0.72, 0.07, C.beltRed);
-  b.box(rx + 0.5, F + 1.34, rz, 0.24, 0.16, 0.09, 0x2f2c2a);
+  // Taekwondo black belt, one gold stripe.
+  const kx = rx + 0.56;
+  b.box(kx, F + 0.98, rz, 0.26, 0.78, 0.08, C.beltBlack);
+  b.box(kx, F + 1.00, rz, 0.28, 0.3, 0.1, 0x201e1c);
+  b.box(kx - 0.025, F + 1.05, rz, 0.05, 0.22, 0.12, C.brass);
 
   // A gi folded on a bench, off the mat.
   b.box(0.3, F, 3.0, 2.0, 0.42, 0.55, C.woodDark);
@@ -1289,9 +1343,8 @@ canvas.addEventListener("pointermove", function (e) {
     const p = [...pointers.values()];
     const d = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
     if (pinchDist > 0 && d > 0) {
-      want.scale = clamp(want.scale * (pinchDist / d), 0.3, 1.9);
+      zoomAt((p[0].x + p[1].x) / 2, (p[0].y + p[1].y) / 2, pinchDist / d);
       cam.scale = want.scale;
-      userMoved = true;
     }
     pinchDist = d;
     movedBy += 20;
@@ -1328,14 +1381,47 @@ canvas.addEventListener("pointercancel", endPointer);
 
 canvas.addEventListener("wheel", function (e) {
   e.preventDefault();
-  want.scale = clamp(want.scale * (1 + e.deltaY * 0.0012), 0.3, 1.9);
-  userMoved = true;
-  touched();
+  zoomAt(e.clientX, e.clientY, 1 + e.deltaY * 0.0012);
 }, { passive: false });
 
 const ray = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
 let hovered = null;
+
+const _plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+const _hit = new THREE.Vector3();
+
+/** Where the pointer lands on the horizontal plane through the camera target. */
+function groundPoint(px, py) {
+  ndc.x = (px / cssW) * 2 - 1;
+  ndc.y = -(py / cssH) * 2 + 1;
+  ray.setFromCamera(ndc, camera);
+  _plane.constant = -want.target.y;
+  return ray.ray.intersectPlane(_plane, _hit) ? _hit : null;
+}
+
+/** Zooming in pulls the view toward whatever the pointer is over, so you can
+    get close to one belt or one line on a whiteboard rather than always to the
+    middle of an island. */
+function zoomAt(px, py, factor) {
+  const before = want.scale;
+  want.scale = clamp(before * factor, 0.12, 1.9);
+  const k = 1 - want.scale / before;
+  if (k > 0.0001) {
+    const pt = groundPoint(px, py);
+    if (pt) {
+      want.target.x += (pt.x - want.target.x) * k * 0.9;
+      want.target.z += (pt.z - want.target.z) * k * 0.9;
+      const r = Math.hypot(want.target.x, want.target.z);
+      if (r > 15) {                       // never let it wander off the ring
+        want.target.x *= 15 / r;
+        want.target.z *= 15 / r;
+      }
+    }
+  }
+  userMoved = true;
+  touched();
+}
 
 function pick(px, py) {
   ndc.x = (px / cssW) * 2 - 1;

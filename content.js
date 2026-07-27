@@ -1,14 +1,17 @@
 /* =============================================================================
-   content.js — every word on the site lives here.
+   content.js — every word on the site lives here, and there should not be many.
 
-   Edit this file freely; nothing in world.js needs to change. Each entry in
-   ZONES is one floating island, and the ARRAY ORDER is the order they sit in
-   the ring, starting at the front and going clockwise. Move an entry up or down
-   and its island moves with it. Add a seventh and the ring re-spaces itself.
+   The room does the talking. If a fact can be shown — a belt with two stripes,
+   a ticker on a whiteboard, a chest with one toy per project — build it into
+   the scene in world.js rather than writing it down here.
 
-   Delete the `todo` line from a section once you have replaced its placeholder
-   copy — that dashed box only exists to stop placeholder text quietly shipping
-   as if it were real.
+   Each entry in ZONES is one floating island, and the ARRAY ORDER is the order
+   they sit in the ring, starting at the front and going clockwise. Move an
+   entry up or down and its island moves with it.
+
+   Delete the `todo` line from a section once its placeholder is gone — that
+   dashed box only exists to stop placeholder text quietly shipping as if it
+   were real.
 ============================================================================= */
 
 export const ZONES = [
@@ -17,18 +20,13 @@ export const ZONES = [
     label: "RLDatix",
     eyebrow: "Work",
     title: "Healthcare software",
-    lede: "Clinical governance, policy and workforce systems for hospitals and aged care providers.",
-    text: [
-      "Day to day this is scoping what a provider actually needs, mapping it to what the platform can do, and writing the proposal that gets it approved — then staying close enough through delivery that the thing which was sold is the thing that lands.",
-      "The work sits between the clinical side and the software side. Neither group has much patience for the other's vocabulary, so most of the value is in translation."
-    ],
+    lede: "Governance, policy and rostering systems for hospitals and aged care.",
     items: [
-      { name: "DatixCloudIQ", tag: "Governance", note: "Incident, risk and compliance management." },
-      { name: "PolicyStat", tag: "Policy", note: "Policy and document control." },
-      { name: "Optima", tag: "Rostering", note: "Workforce planning and rostering." },
-      { name: "VitalCenter Online", tag: "Archival", note: "Legacy system archival and decommissioning." }
-    ],
-    todo: "Placeholder. Replace the lede, the two paragraphs and the notes above with your own account of the role — and delete this `todo` line in content.js when you do."
+      { name: "DatixCloudIQ", tag: "Governance" },
+      { name: "PolicyStat", tag: "Policy" },
+      { name: "Optima", tag: "Rostering" },
+      { name: "VitalCenter Online", tag: "Archival" }
+    ]
   },
 
   {
@@ -36,17 +34,8 @@ export const ZONES = [
     label: "Investing",
     eyebrow: "Practice",
     title: "Markets",
-    lede: "A long-running interest in how capital gets allocated, and in being honest about what I actually know.",
-    text: [
-      "Mostly this is reading, position sizing, and writing down the reasoning before the outcome is known so it can be judged fairly afterwards. The whiteboard is the real tool.",
-      "Nothing here is advice. It is a record of thinking, kept mainly so that later I can see where it was wrong."
-    ],
-    items: [
-      { name: "Thesis notes", tag: "Writing", note: "Positions written up before they are taken." },
-      { name: "Portfolio review", tag: "Process", note: "A standing check on concentration and drawdown." },
-      { name: "Post-mortems", tag: "Review", note: "What the reasoning missed, in hindsight." }
-    ],
-    todo: "Placeholder. Swap in what you actually want public here — this section deliberately says very little until you decide how much to share."
+    lede: "Write the reasoning down before the outcome is known. Nothing here is advice.",
+    todo: "The whiteboard shows XJO, SPX and NDX. Change TICKERS at the top of world.js to whatever you actually watch, then delete this line."
   },
 
   {
@@ -54,16 +43,12 @@ export const ZONES = [
     label: "Jiu-jitsu",
     eyebrow: "Training",
     title: "The mats",
-    lede: "Taekwondo as a kid, Brazilian jiu-jitsu as an adult. Twenty-odd years apart and not much alike.",
-    text: [
-      "Taekwondo taught distance and timing at an age when neither meant anything yet. Jiu-jitsu took the same problem and moved it to the ground, where being wrong is immediate and unarguable.",
-      "It is the one thing on this page with no deliverable. You turn up, you get better slowly, and the only record is that the same people keep catching you in the same places until they don't."
-    ],
+    lede: "Taekwondo as a kid. Jiu-jitsu now.",
     items: [
-      { name: "Brazilian jiu-jitsu", tag: "White belt, two stripes", note: "Training now." },
-      { name: "Taekwondo", tag: "As a kid", note: "Where it started." }
+      { name: "Brazilian jiu-jitsu", tag: "Now" },
+      { name: "Taekwondo", tag: "Then" }
     ],
-    todo: "Partly placeholder. The belt is yours; the gym and how long you have trained are still missing. Add them and delete this line."
+    todo: "Both belts are on the rack — zoom in. Add your gym here if you want it named, then delete this line."
   },
 
   {
@@ -71,17 +56,13 @@ export const ZONES = [
     label: "Music",
     eyebrow: "Studio",
     title: "Decks and records",
-    lede: "DJing, and music made for the sake of making it.",
-    text: [
-      "The studio is the corner of this room with the least justification and the most hours in it. Nothing here needed to exist, which is the point.",
-      "Mixes, edits, and tracks that mostly never left the drive."
-    ],
+    lede: "DJing, and music made for its own sake.",
     items: [
-      { name: "Track or set one", tag: "Year", note: "One line on what it is, and a link if there is one." },
-      { name: "Track or set two", tag: "Year", note: "One line on what it is, and a link if there is one." },
-      { name: "Track or set three", tag: "Year", note: "One line on what it is, and a link if there is one." }
+      { name: "Track or set one", tag: "Year" },
+      { name: "Track or set two", tag: "Year" },
+      { name: "Track or set three", tag: "Year" }
     ],
-    todo: "Placeholder. Drop in the real tracks, sets or mixes — item names and notes both. Delete this line when you do."
+    todo: "Placeholder. Real names and years, and links if there are any."
   },
 
   {
@@ -89,17 +70,14 @@ export const ZONES = [
     label: "Projects",
     eyebrow: "Archive",
     title: "The toy chest",
-    lede: "Everything else — the side builds, the experiments, the things made for their own sake.",
-    text: [
-      "Some of it shipped, most of it did not, and a fair amount was abandoned the moment the interesting problem was solved. The chest is the honest format: open it and things fall out."
-    ],
+    lede: "Side builds. Open it and things fall out.",
     items: [
-      { name: "This site", tag: "2026", note: "A pixel-art room rendered in real 3D. One grain of sand in the jar for every visitor." },
-      { name: "Project two", tag: "Year", note: "One line on what it was and why it existed." },
-      { name: "Project three", tag: "Year", note: "One line on what it was and why it existed." },
-      { name: "Project four", tag: "Year", note: "One line on what it was and why it existed." }
+      { name: "This site", tag: "2026" },
+      { name: "Project two", tag: "Year" },
+      { name: "Project three", tag: "Year" },
+      { name: "Project four", tag: "Year" }
     ],
-    todo: "Placeholder. Add or remove `items` here and the toys in the chest follow automatically — world.js reads the count from this list."
+    todo: "Placeholder names. One toy appears per item, so adding or removing here changes the chest."
   },
 
   {
@@ -107,32 +85,22 @@ export const ZONES = [
     label: "About",
     eyebrow: "Who",
     title: "Alex Parker",
-    lede: "Based in Australia. Interested in the seam between clinical work and the software that carries it.",
-    text: [
-      "The shelf is the part of the room that says the most. Books, a desk, a lamp left on — the setting the rest of it happens in.",
-      "Best way to reach me is email."
-    ],
+    lede: "Australia. Somewhere between the clinical side and the software.",
     items: [
-      { name: "hello@alexparker.au", tag: "Email" },
-      { name: "Australia", tag: "Located" }
+      { name: "hello@alexparker.au", tag: "Email" }
     ],
-    todo: "Placeholder. Write the two or three sentences you would actually want a stranger to read first, and delete this line."
+    todo: "One or two sentences of your own, if you want them. Otherwise leave it this short and delete this line."
   }
 ];
 
-/* The hourglass on the centre island. One grain of sand per visit — the
-   original idea this site started from, kept literally. It is a selectable
-   section like any other; `keepAz` stops the camera swinging round, since an
+/* The hourglass on the centre island — one grain of sand per visit, which is
+   where this site started. `keepAz` stops the camera swinging round, since an
    hourglass in the middle of the ring has no front to face. */
 export const JAR_ZONE = {
   id: "hourglass",
   label: "The hourglass",
   eyebrow: "Visitors",
   title: "One grain per visit",
-  lede: "The site began as a single grain of sand falling. This is what is left of that idea.",
-  text: [
-    "Every time someone opens this page a counter ticks over and one more grain goes through the neck. The number in the header is that count, and the level in the lower bulb is the same number drawn in sand.",
-    "That level is logarithmic rather than linear, so it always rises and never quite fills. An hourglass that filled honestly would have been full for good after a few thousand visits, which is a worse thing to look at."
-  ],
+  lede: "The level in the lower bulb is the visitor count. Logarithmic, so it never quite fills.",
   keepAz: true
 };
