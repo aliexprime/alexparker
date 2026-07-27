@@ -1,0 +1,88 @@
+/* =============================================================================
+   content.js — every word on the site lives here.
+
+   Edit this file freely; nothing in world.js needs to change. Each zone maps to
+   one scene in the 3D room. Delete the `todo` line from a zone once you have
+   replaced its placeholder copy — that dashed box only exists to stop
+   placeholder text quietly shipping as if it were real.
+============================================================================= */
+
+export const ZONES = [
+  {
+    id: "rldatix",
+    label: "RLDatix",
+    eyebrow: "Work",
+    title: "Healthcare software",
+    lede: "Clinical governance, policy and workforce systems for hospitals and aged care providers.",
+    text: [
+      "Day to day this is scoping what a provider actually needs, mapping it to what the platform can do, and writing the proposal that gets it approved — then staying close enough through delivery that the thing which was sold is the thing that lands.",
+      "The work sits between the clinical side and the software side. Neither group has much patience for the other's vocabulary, so most of the value is in translation."
+    ],
+    items: [
+      { name: "DatixCloudIQ", tag: "Governance", note: "Incident, risk and compliance management." },
+      { name: "PolicyStat", tag: "Policy", note: "Policy and document control." },
+      { name: "Optima", tag: "Rostering", note: "Workforce planning and rostering." },
+      { name: "VitalCenter Online", tag: "Archival", note: "Legacy system archival and decommissioning." }
+    ],
+    todo: "Placeholder. Replace the lede, the two paragraphs and the notes above with your own account of the role — and delete this `todo` line in content.js when you do."
+  },
+
+  {
+    id: "investing",
+    label: "Investing",
+    eyebrow: "Practice",
+    title: "Markets",
+    lede: "A long-running interest in how capital gets allocated, and in being honest about what I actually know.",
+    text: [
+      "Mostly this is reading, position sizing, and writing down the reasoning before the outcome is known so it can be judged fairly afterwards. The whiteboard is the real tool.",
+      "Nothing here is advice. It is a record of thinking, kept mainly so that later I can see where it was wrong."
+    ],
+    items: [
+      { name: "Thesis notes", tag: "Writing", note: "Positions written up before they are taken." },
+      { name: "Portfolio review", tag: "Process", note: "A standing check on concentration and drawdown." },
+      { name: "Post-mortems", tag: "Review", note: "What the reasoning missed, in hindsight." }
+    ],
+    todo: "Placeholder. Swap in what you actually want public here — this section deliberately says very little until you decide how much to share."
+  },
+
+  {
+    id: "projects",
+    label: "Projects",
+    eyebrow: "Archive",
+    title: "The toy chest",
+    lede: "Everything else — the side builds, the experiments, the things made for their own sake.",
+    text: [
+      "Some of it shipped, most of it did not, and a fair amount was abandoned the moment the interesting problem was solved. The chest is the honest format: open it and things fall out."
+    ],
+    items: [
+      { name: "This site", tag: "2026", note: "A pixel-art room rendered in real 3D. One grain of sand in the jar for every visitor." },
+      { name: "Project two", tag: "Year", note: "One line on what it was and why it existed." },
+      { name: "Project three", tag: "Year", note: "One line on what it was and why it existed." },
+      { name: "Project four", tag: "Year", note: "One line on what it was and why it existed." }
+    ],
+    todo: "Placeholder. Add or remove `items` here and the toys in the chest follow automatically — world.js reads the count from this list."
+  },
+
+  {
+    id: "about",
+    label: "About",
+    eyebrow: "Who",
+    title: "Alex Parker",
+    lede: "Based in Australia. Interested in the seam between clinical work and the software that carries it.",
+    text: [
+      "The shelf is the part of the room that says the most. Books, a desk, a lamp left on — the setting the rest of it happens in.",
+      "Best way to reach me is email."
+    ],
+    items: [
+      { name: "hello@alexparker.au", tag: "Email" },
+      { name: "Australia", tag: "Located" }
+    ],
+    todo: "Placeholder. Write the two or three sentences you would actually want a stranger to read first, and delete this line."
+  }
+];
+
+/* The jar on the centre pedestal. One grain of sand per visit — the original
+   idea this site started from, kept literally. */
+export const JAR = {
+  caption: "One grain for every visit"
+};
