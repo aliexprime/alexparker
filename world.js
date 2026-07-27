@@ -1,22 +1,21 @@
 /* =============================================================================
-   world.js — a small 3D room, rendered small and scaled up.
+   world.js — a set of small floating islands, rendered small and scaled up.
 
    The scene is real geometry with real lights and real shadows. It only looks
    like pixel art because it is rendered into a buffer a few hundred pixels wide
    and then blown up with nearest-neighbour scaling. Nothing here is a sprite.
 
-   Layout: a square plinth with one scene on each side — work, markets,
-   projects, about — decorations in the corners, and a jar of sand in the
-   middle that gains a grain for every visit.
+   Layout: one island per section, arranged in a ring around a jar of sand that
+   gains a grain for every visit. Each island is authored in its own local space
+   where +z points OUT of the ring, then rotated into place — so whichever side
+   you orbit to, you are looking at the front of something.
 
-   Each scene is authored in its own local space where +z points OUT of the
-   plinth, then rotated into place. Whichever side you orbit to, you are looking
-   at the front of something. Nothing tall is allowed on a scene's inner edge,
-   so the middle of the room always stays open.
+   Nothing is labelled until you select it. Selecting an island also wakes it
+   up: screens start reading, platters spin, the heavy bag swings.
 ============================================================================= */
 
 import * as THREE from "./vendor/three.module.min.js";
-import { ZONES, JAR } from "./content.js";
+import { ZONES, JAR_ZONE } from "./content.js";
 
 /* ---- Palette ---------------------------------------------------------------
    Muted and warm, so a room full of colour still sits quietly on paper. */
@@ -25,7 +24,6 @@ const C = {
   baseDark:  0xb2aa9a,
   baseMid:   0xc7bfae,
   baseTop:   0xdfd8c8,
-  path:      0xd3cab8,
   edge:      0xa39a88,
 
   wood:      0xa87c4e,
@@ -59,6 +57,28 @@ const C = {
   money:     0x8fae7d,
   screenGrn: 0x8ed49a,
 
+  matA:      0x9db2bd,
+  matB:      0x8aa1ae,
+  matTrim:   0x6f8592,
+  bagLeather:0x8a5a45,
+  bagDark:   0x6f4636,
+  beltWhite: 0xe8e5dc,
+  beltBlue:  0x3f6fa8,
+  beltPurple:0x7a5f9e,
+  beltBrown: 0x7a5334,
+  beltBlack: 0x2f2c2a,
+  beltRed:   0xb5433c,
+  gi:        0xe4e2da,
+
+  deckBody:  0x4a4f55,
+  platter:   0x9aa1a6,
+  vinyl:     0x2b2926,
+  mixer:     0x3b4046,
+  speaker:   0x3f4348,
+  cone:      0x8d7f6d,
+  ledCyan:   0x7fd6d0,
+  ledAmber:  0xe8b95c,
+
   rug:       0xd0b995,
   chest:     0x9c6a3f,
   chestLid:  0x7f5330,
@@ -71,6 +91,7 @@ const C = {
   aboutFloor:0xe2dbcb,
   rug2:      0xc0ac90,
   lampGlow:  0xffe9b0,
+  steam:     0xdfe4e6,
 
   glass:     0xcadde4,
   sand:      0xd7ae66,
@@ -81,8 +102,9 @@ const BOOKS = [0xb5553f, 0x4a7a8c, 0xc9a44c, 0x6b8f5e, 0x8a6b9e, 0xc2725e,
                0x5f7f9e, 0xa8894a, 0x7d9e6b, 0x9e5f5f];
 
 /* ---- Geometry builder ------------------------------------------------------
-   Every static prop is accumulated here and merged into one mesh per zone, so
-   the whole room costs about a dozen draw calls. */
+   Static props are accumulated here and merged into one mesh per island, so the
+   whole scene costs a couple of dozen draw calls. Anything that moves is built
+   as its own small mesh instead. */
 
 const _m = new THREE.Matrix4();
 const _e = new THREE.Euler();
@@ -153,20 +175,21 @@ class Builder {
 }
 
 function solidMesh(builder) {
-  const mesh = new THREE.Mesh(
-    builder.geometry(),
-    new THREE.MeshLambertMaterial({ vertexColors: true })
-  );
+  const mesh = new THREE.Mesh(builder.geometry(), new THREE.MeshLambertMaterial({ vertexColors: true }));
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   return mesh;
 }
 
 function glowMesh(builder) {
-  return new THREE.Mesh(
-    builder.geometry(),
-    new THREE.MeshBasicMaterial({ vertexColors: true })
-  );
+  return new THREE.Mesh(builder.geometry(), new THREE.MeshBasicMaterial({ vertexColors: true }));
+}
+
+/** A small standalone mesh for something that has to move. */
+function part(fn, glow) {
+  const b = new Builder();
+  fn(b);
+  return glow ? glowMesh(b) : solidMesh(b);
 }
 
 function rng(seed) {
@@ -187,29 +210,53 @@ function loc(x, z, ry, lx, lz) {
           z - Math.sin(ry) * lx + Math.cos(ry) * lz];
 }
 
-/* ---- Shared props ---------------------------------------------------------- */
+function hash1(n) {
+  const s = Math.sin(n * 127.1) * 43758.5453;
+  return s - Math.floor(s);
+}
 
-const F = 0.35;   // top of the plinth: everything sits on this
+/** Smooth pseudo-random walk, for charts and meters that should look alive. */
+function walk(k) {
+  const i = Math.floor(k), f = k - i;
+  const a = hash1(i), b = hash1(i + 1);
+  return a + (b - a) * (f * f * (3 - 2 * f));
+}
+
+/* =============================================================================
+   Islands
+============================================================================= */
+
+const F = 0.35;           // the top surface of an island: props sit on this
+const ISLAND = 7.2;
+
+/** A floating slab, stepped underneath so it reads as an object not a plane. */
+function island(b, size, topColor) {
+  b.box(0, F - 0.07, 0, size, 0.07, size, topColor);
+  b.box(0, F - 0.58, 0, size, 0.51, size, C.baseTop);
+  b.box(0, F - 0.96, 0, size - 0.9, 0.38, size - 0.9, C.baseMid);
+  b.box(0, F - 1.28, 0, size - 2.5, 0.32, size - 2.5, C.baseDark);
+  b.box(0, F - 1.52, 0, size - 4.4, 0.24, size - 4.4, C.edge);
+}
+
+/* ---- Shared props ---------------------------------------------------------- */
 
 /** A bookcase with an actual cavity, so the books are visible inside it. */
 function shelf(b, x, z, w, h, ry, seed) {
   const d = 0.42, t = 0.06;
   const [bxp, bzp] = loc(x, z, ry, 0, -d / 2 + t / 2);
-  b.box(bxp, F, bzp, w, h, t, C.woodDark, ry);                       // back panel
+  b.box(bxp, F, bzp, w, h, t, C.woodDark, ry);
   for (const side of [-1, 1]) {
     const [sx, sz] = loc(x, z, ry, side * (w / 2 - t / 2), 0);
-    b.box(sx, F, sz, t, h, d, C.wood, ry);                           // sides
+    b.box(sx, F, sz, t, h, d, C.wood, ry);
   }
-  b.box(x, F + h - t, z, w, t, d, C.wood, ry);                       // top
-  b.box(x, F, z, w, t, d, C.woodDark, ry);                           // plinth
+  b.box(x, F + h - t, z, w, t, d, C.wood, ry);
+  b.box(x, F, z, w, t, d, C.woodDark, ry);
 
   const r = rng(seed);
   const rows = Math.max(2, Math.round(h / 0.52));
   const gap = (h - 0.14) / rows;
   for (let i = 1; i <= rows; i++) {
-    const boardY = F + 0.06 + i * gap;
-    if (i < rows) b.box(x, boardY, z, w - 2 * t, t, d - 0.06, C.wood, ry);
-
+    if (i < rows) b.box(x, F + 0.06 + i * gap, z, w - 2 * t, t, d - 0.06, C.wood, ry);
     const shelfY = F + 0.06 + (i - 1) * gap + t;
     const cap = shelfY + gap - t - 0.04;
     let bx = -w / 2 + t + 0.05;
@@ -263,7 +310,7 @@ function desk(b, x, z, w, d, ry, color) {
   return F + h + 0.08;
 }
 
-/** A screen on a stand. Returns the y of the bottom of the panel. */
+/** A screen on a stand. Returns the y of the bottom of the lit panel. */
 function monitor(b, g, x, y, z, w, h, ry, screenColor) {
   b.box(x, y, z, 0.26, 0.05, 0.18, C.metalDark, ry);
   b.box(x, y + 0.05, z, 0.06, 0.2, 0.06, C.metalDark, ry);
@@ -273,32 +320,27 @@ function monitor(b, g, x, y, z, w, h, ry, screenColor) {
   return y + 0.28;
 }
 
-/* ---- Zone: RLDatix ---------------------------------------------------------
-   A bay. Bed in the middle, a low headwall behind it, tall storage pushed out
-   to the sides so the centre of the room stays clear. */
+/* =============================================================================
+   Section: RLDatix
+============================================================================= */
+
+const BED_X = -0.35, BED_Z = 0.15;
 
 function buildRLDatix(b, g) {
-  b.box(0, F, 0, 7.4, 0.05, 7.4, C.clinFloor);
+  island(b, ISLAND, C.clinFloor);
 
-  const bx = -0.35, bz = 0.15;
+  const bx = BED_X, bz = BED_Z;
   const frameY = F + 0.44;
 
-  // Low headwall with the vitals screen on it — reads as a bay without walling
-  // the scene off from the rest of the room.
+  // Low headwall: reads as a bay without walling the scene off.
   b.box(bx, F, bz - 1.62, 2.7, 0.86, 0.14, C.clinPanel);
   b.box(bx, F + 0.86, bz - 1.62, 2.8, 0.08, 0.2, 0xa9c0c1);
   b.box(bx + 0.95, F + 0.5, bz - 1.5, 0.56, 0.4, 0.1, C.white);
   g.box(bx + 0.95, F + 0.56, bz - 1.44, 0.46, 0.28, 0.02, 0x1f4a4a);
-  const trace = [0.10, 0.10, 0.21, 0.05, 0.34, 0.10, 0.10];
-  for (let i = 0; i < trace.length; i++) {
-    g.box(bx + 0.95 - 0.18 + i * 0.06, F + 0.64 + trace[i] * 0.42, bz - 1.428,
-          0.05, 0.032, 0.012, C.screenTeal);
-  }
-  b.box(bx - 0.9, F + 0.52, bz - 1.5, 0.4, 0.28, 0.1, 0xdfe9e0);   // gas outlets
+  b.box(bx - 0.9, F + 0.52, bz - 1.5, 0.4, 0.28, 0.1, 0xdfe9e0);
   b.box(bx - 0.9, F + 0.6, bz - 1.44, 0.09, 0.09, 0.04, C.metal);
   b.box(bx - 0.74, F + 0.6, bz - 1.44, 0.09, 0.09, 0.04, C.metal);
 
-  // Bed.
   for (const [lx, lz] of [[-0.45, -1.0], [0.45, -1.0], [-0.45, 1.0], [0.45, 1.0]]) {
     b.box(bx + lx, F, bz + lz, 0.08, 0.44, 0.08, C.metalDark);
   }
@@ -315,21 +357,16 @@ function buildRLDatix(b, g) {
   b.box(bx + 0.55, frameY + 0.16, bz + 0.2, 0.05, 0.26, 1.3, C.metal);
   b.box(bx + 0.4, frameY + 0.36, bz + 1.18, 0.3, 0.02, 0.22, C.paper);
 
-  // IV pole beside the bed.
+  // IV pole.
   b.box(bx - 1.35, F, bz - 0.5, 0.3, 0.05, 0.3, C.metalDark);
   b.cyl(bx - 1.35, F + 0.05, bz - 0.5, 0.035, 0.035, 1.55, 6, C.metal);
   b.box(bx - 1.35, F + 1.3, bz - 0.5, 0.24, 0.3, 0.08, 0xdfe9e0);
   b.box(bx - 1.35, F + 1.57, bz - 0.5, 0.3, 0.04, 0.1, C.metal);
 
-  // Workstation on wheels, angled toward the foot of the bed.
+  // Workstation on wheels.
   b.box(2.15, F + 0.02, 1.35, 0.62, 0.7, 0.5, C.white, -0.4);
   b.box(2.15, F, 1.35, 0.5, 0.06, 0.4, C.metalDark, -0.4);
-  const my = monitor(b, g, 2.15, F + 0.72, 1.35, 0.62, 0.44, -0.4, 0x24506b);
-  const bars = [0.14, 0.24, 0.1, 0.28, 0.18];
-  for (let i = 0; i < bars.length; i++) {
-    const [gx, gz] = loc(2.15, 1.35, -0.4, -0.2 + i * 0.1, 0.033);
-    g.box(gx, my + 0.06 + bars[i] / 2, gz, 0.06, bars[i], 0.012, C.screenTeal, -0.4);
-  }
+  monitor(b, g, 2.15, F + 0.72, 1.35, 0.62, 0.44, -0.4, 0x24506b);
   b.box(2.15, F + 0.72, 1.58, 0.44, 0.03, 0.16, 0xd6d6d0, -0.4);
 
   // Tall things live on the side edges only.
@@ -340,23 +377,88 @@ function buildRLDatix(b, g) {
   b.box(-2.68, F + 0.28, -0.4, 0.1, 0.05, 0.05, C.metal);
   b.box(-2.68, F + 0.83, -0.4, 0.1, 0.05, 0.05, C.metal);
 
-  b.box(2.95, F, -0.9, 0.62, 0.86, 1.9, C.white);           // counter run
+  b.box(2.95, F, -0.9, 0.62, 0.86, 1.9, C.white);
   b.box(2.95, F + 0.86, -0.9, 0.7, 0.08, 2.0, 0xe4ebec);
-  b.box(2.95, F + 0.94, -1.5, 0.34, 0.08, 0.42, 0xc8d6d7);  // basin
+  b.box(2.95, F + 0.94, -1.5, 0.34, 0.08, 0.42, 0xc8d6d7);
   b.box(2.8, F + 0.94, -1.72, 0.05, 0.24, 0.05, C.metal);
 
-  b.cyl(-2.2, F, 1.5, 0.24, 0.2, 0.42, 8, C.metal);         // stool
+  b.cyl(-2.2, F, 1.5, 0.24, 0.2, 0.42, 8, C.metal);
   b.cyl(-2.2, F + 0.42, 1.5, 0.26, 0.26, 0.07, 8, C.blanket);
-  b.cyl(2.5, F, -2.6, 0.2, 0.17, 0.42, 8, 0xd5dcdc);        // bin
+  b.cyl(2.5, F, -2.6, 0.2, 0.17, 0.42, 8, 0xd5dcdc);
   pottedPlant(b, -2.9, 2.3, 1.0);
 }
 
-/* ---- Zone: Investing -------------------------------------------------------- */
+/** A trace that is mostly flat, with the one spike that matters. */
+function ecgWave(p) {
+  p -= Math.floor(p);
+  if (p < 0.40) return 0;
+  if (p < 0.46) return -0.22;
+  if (p < 0.53) return 1.0;
+  if (p < 0.58) return -0.45;
+  if (p < 0.68) return 0.18;
+  return 0;
+}
+
+function animRLDatix(group) {
+  const ups = [];
+
+  // Vitals trace on the headwall, travelling right to left.
+  const trace = new THREE.Group();
+  trace.position.set(BED_X + 0.95, F + 0.70, BED_Z - 1.428);
+  group.add(trace);
+  const bars = [];
+  for (let i = 0; i < 8; i++) {
+    const m = part(b => b.box(0, -0.018, 0, 0.05, 0.036, 0.012, C.screenTeal), true);
+    m.position.x = -0.19 + i * 0.054;
+    trace.add(m);
+    bars.push(m);
+  }
+  ups.push(function (t, dt, amt) {
+    for (let i = 0; i < bars.length; i++) {
+      bars[i].position.y = ecgWave(t * 0.75 - i * 0.055) * 0.10 * amt;
+    }
+  });
+
+  // A drip working its way down the line.
+  const drop = part(b => b.box(0, -0.025, 0, 0.045, 0.05, 0.045, 0xbcd6e0));
+  drop.castShadow = false;
+  group.add(drop);
+  ups.push(function (t, dt, amt) {
+    drop.visible = amt > 0.4;
+    if (!drop.visible) return;
+    const p = (t * 0.75) % 1;
+    drop.position.set(BED_X - 1.35, F + 1.28 - p * 0.52, BED_Z - 0.5);
+  });
+
+  // Dashboard on the workstation.
+  const dash = new THREE.Group();
+  dash.position.set(2.15, F + 1.03, 1.35);
+  dash.rotation.y = -0.4;
+  group.add(dash);
+  const dashBars = [];
+  for (let i = 0; i < 5; i++) {
+    const m = part(b => b.box(0, 0, 0, 0.06, 1, 0.012, C.screenTeal), true);
+    m.position.set(-0.2 + i * 0.1, 0, 0.033);
+    dash.add(m);
+    dashBars.push(m);
+  }
+  ups.push(function (t, dt, amt) {
+    for (let i = 0; i < dashBars.length; i++) {
+      const h = 0.05 + walk(t * 0.5 + i * 3.7) * 0.26;
+      dashBars[i].scale.y = 0.04 + h * amt;
+    }
+  });
+
+  return ups;
+}
+
+/* =============================================================================
+   Section: Investing
+============================================================================= */
 
 function buildInvesting(b, g) {
-  b.box(0, F, 0, 7.4, 0.05, 7.4, C.invFloor);
+  island(b, ISLAND, C.invFloor);
 
-  // Freestanding vault cabinet, door facing out.
   const vx = -2.55, vz = -0.9;
   b.box(vx, F, vz, 1.9, 2.0, 0.95, C.vaultDark);
   b.box(vx, F + 0.05, vz + 0.5, 1.7, 1.85, 0.06, C.vault);
@@ -372,23 +474,14 @@ function buildInvesting(b, g) {
   }
   b.box(vx, F + 2.0, vz, 2.0, 0.1, 1.05, C.vault);
 
-  // Safe beside it.
   b.box(-2.5, F, 1.15, 0.95, 1.0, 0.8, C.safe);
   b.box(-2.5, F + 0.07, 1.53, 0.8, 0.86, 0.06, 0x5a636a);
   b.cylC(-2.36, F + 0.5, 1.59, 0.12, 0.12, 0.06, 8, C.brass, Math.PI / 2, 0, 0);
   b.box(-2.76, F + 0.46, 1.57, 0.05, 0.28, 0.05, C.brass);
   crate(b, -2.5, F + 1.0, 1.15, 0.34, 0.3);
 
-  // Desk, screen mid-argument with itself.
   const topY = desk(b, 0.35, 0.75, 2.0, 1.0, 0, C.wood);
-  const scrY = monitor(b, g, 0.15, topY, 0.55, 0.82, 0.52, 0, 0x1d3a2a);
-  const r = rng(9);
-  let level = 0.14;
-  for (let i = 0; i < 10; i++) {
-    const h = 0.05 + r() * 0.2;
-    g.box(0.15 - 0.32 + i * 0.071, scrY + 0.06 + level, 0.582, 0.042, h, 0.012, C.screenGrn);
-    level = clamp(level + (r() - 0.44) * 0.08, 0.02, 0.3);
-  }
+  monitor(b, g, 0.15, topY, 0.55, 0.82, 0.52, 0, 0x1d3a2a);
   b.box(0.9, topY, 0.95, 0.38, 0.03, 0.22, 0xd6d6d0);
   b.box(1.2, topY, 0.6, 0.2, 0.24, 0.14, C.paper);
   chair(b, 0.35, 2.05, Math.PI, C.woodDark);
@@ -397,8 +490,7 @@ function buildInvesting(b, g) {
   const wx = 2.9, wz = -0.7;
   b.boxC(wx - 0.03, F + 1.12, wz, 0.06, 1.15, 2.1, C.board);
   b.boxC(wx + 0.02, F + 1.12, wz, 0.03, 1.25, 2.2, 0xb8b2a2);
-  const marks = [[0.32, -0.55, 0.9], [0.1, -0.1, 1.2], [-0.16, -0.7, 0.6]];
-  for (const [my, mz, mw] of marks) {
+  for (const [my, mz, mw] of [[0.32, -0.55, 0.9], [0.1, -0.1, 1.2], [-0.16, -0.7, 0.6]]) {
     b.boxC(wx - 0.07, F + 1.12 + my, wz + mz, 0.02, 0.045, mw, C.boardInk);
   }
   b.boxC(wx - 0.07, F + 0.9, wz + 0.75, 0.02, 0.32, 0.045, C.boardInk2);
@@ -408,7 +500,6 @@ function buildInvesting(b, g) {
     b.boxC(wx - 0.16, F + 0.55, wz + lz, 0.05, 1.1, 0.05, C.woodDark, -0.16, 0, 0);
   }
 
-  // Money: a low table of coin stacks and banded notes.
   b.box(2.3, F, 1.7, 1.25, 0.42, 0.85, C.woodDark);
   b.box(2.3, F + 0.42, 1.7, 1.35, 0.07, 0.95, C.wood);
   const coinY = F + 0.49;
@@ -420,121 +511,416 @@ function buildInvesting(b, g) {
     b.box(2.68, coinY + i * 0.1 + 0.02, 1.5, 0.42, 0.05, 0.1, 0xd8cfae, 0.2);
   }
 
-  // A press quietly running notes into a tray.
   b.box(0.1, F, -2.5, 1.15, 0.85, 0.8, C.metalDark, 0.18);
   b.box(0.1, F + 0.85, -2.5, 1.25, 0.16, 0.9, C.metal, 0.18);
   g.box(0.1, F + 0.66, -2.12, 0.34, 0.12, 0.02, C.screenGrn, 0.18);
   b.box(0.2, F + 0.3, -1.95, 0.6, 0.05, 0.34, C.money, 0.18);
-  b.box(0.2, F + 0.35, -1.95, 0.56, 0.04, 0.3, 0xa3bd90, 0.18);
   pottedPlant(b, -1.0, 2.5, 1.1);
 }
 
-/* ---- Zone: Projects --------------------------------------------------------- */
+function animInvesting(group) {
+  const ups = [];
 
-function buildProjects(b, g) {
-  b.cyl(0, F, 0.2, 3.1, 3.1, 0.05, 12, C.rug);
-  b.cyl(0, F + 0.05, 0.2, 2.4, 2.4, 0.012, 12, 0xdcc6a6);
+  // The chart scrolls: each candle inherits the one to its right.
+  const chart = new THREE.Group();
+  chart.position.set(0.15, F + 1.14, 0.582);
+  group.add(chart);
+  const candles = [];
+  for (let i = 0; i < 10; i++) {
+    const m = part(b => b.box(0, 0, 0, 0.042, 1, 0.012, C.screenGrn), true);
+    m.position.set(-0.32 + i * 0.071, 0, 0);
+    chart.add(m);
+    candles.push(m);
+  }
+  ups.push(function (t, dt, amt) {
+    for (let i = 0; i < candles.length; i++) {
+      const k = t * 0.6 + i * 0.55;
+      const h = 0.04 + walk(k) * 0.22;
+      candles[i].scale.y = 0.03 + h * amt;
+      candles[i].position.y = -0.16 + walk(k * 0.5 + 11) * 0.2 * amt;
+    }
+  });
 
-  // Chest body — the lid is a separate mesh so it can open.
-  b.box(0, F + 0.05, -0.2, 2.3, 0.95, 1.45, C.chest);
-  b.box(0, F + 0.05, -0.2, 2.36, 0.12, 1.51, C.chestLid);
-  b.box(0, F + 0.88, -0.2, 2.36, 0.12, 1.51, C.chestLid);
-  b.box(0, F + 0.1, 0.56, 0.28, 0.7, 0.06, C.brass);
-  b.box(0, F + 0.42, 0.56, 0.22, 0.22, 0.08, C.brass);
-  for (const sx of [-0.95, 0.95]) {
-    b.box(sx, F + 0.1, 0.56, 0.14, 0.78, 0.05, C.brass);
-    b.box(sx, F + 0.1, -0.96, 0.14, 0.78, 0.05, C.brass);
+  // The press keeps running notes out onto the tray.
+  const press = new THREE.Group();
+  press.position.set(0.1, 0, -2.5);
+  press.rotation.y = 0.18;
+  group.add(press);
+  const note = part(b => {
+    b.box(0, 0, 0, 0.52, 0.035, 0.28, C.money);
+    b.box(0, 0.035, 0, 0.48, 0.012, 0.24, 0xa3bd90);
+  });
+  press.add(note);
+  ups.push(function (t, dt, amt) {
+    note.visible = amt > 0.35;
+    if (!note.visible) return;
+    const p = (t * 0.45) % 1;
+    const slide = Math.min(1, p / 0.6);
+    const fall = p < 0.6 ? 0 : Math.min(1, (p - 0.6) / 0.4);
+    note.position.set(0.08, F + 0.56 - fall * 0.24, 0.15 + slide * 0.44);
+    note.rotation.x = fall * 0.14;
+  });
+
+  return ups;
+}
+
+/* =============================================================================
+   Section: Jiu-jitsu — mats, a heavy bag, and the belts that came before
+============================================================================= */
+
+const BAG_X = -2.85, BAG_Z = -1.5;
+
+function buildBJJ(b, g) {
+  island(b, ISLAND, 0xdcd6c8);
+
+  // Tatami, laid in the middle in a checkerboard the way a mat always is.
+  const n = 3, s = 1.72, span = n * s;
+  b.box(0, F, 0, span + 0.16, 0.05, span + 0.16, C.matTrim);
+  const off = -(n - 1) * s / 2;
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      b.box(off + i * s, F + 0.05, off + j * s, s - 0.06, 0.05, s - 0.06,
+            ((i + j) & 1) ? C.matA : C.matB);
+    }
   }
 
-  // Things that already spilled out and never went back in.
-  b.box(-1.85, F + 0.05, 1.15, 0.34, 0.34, 0.34, C.toyBlue, 0.4);
-  b.box(-1.5, F + 0.05, 1.5, 0.26, 0.26, 0.26, C.toyYellow, -0.2);
-  b.rock(1.7, F + 0.28, 1.2, 0.24, C.toyRed);
-  b.box(1.35, F + 0.05, 1.7, 0.5, 0.1, 0.34, C.toyGreen, 0.6);
+  // Heavy bag stand, just off the mat. The bag itself is animated.
+  b.box(BAG_X, F, BAG_Z, 1.0, 0.12, 1.0, C.metalDark);
+  b.cyl(BAG_X, F + 0.12, BAG_Z, 0.09, 0.11, 2.4, 8, C.metal);
+  b.box(BAG_X + 0.38, F + 2.4, BAG_Z, 0.86, 0.12, 0.14, C.metal);
+  b.box(BAG_X + 0.78, F + 2.34, BAG_Z, 0.08, 0.08, 0.08, C.metalDark);
 
-  // Side edges.
+  // Belt rack along the back, so the belts face out. White through black —
+  // and on the end, the taekwondo belt that started it.
+  const rx = 1.35, rz = -3.05;
+  b.box(rx - 1.15, F, rz, 0.14, 1.9, 0.14, C.woodDark);
+  b.box(rx + 1.15, F, rz, 0.14, 1.9, 0.14, C.woodDark);
+  b.box(rx, F + 1.78, rz, 2.4, 0.1, 0.1, C.wood);
+  const belts = [C.beltWhite, C.beltBlue, C.beltPurple, C.beltBrown, C.beltBlack];
+  for (let i = 0; i < belts.length; i++) {
+    const x = rx - 0.86 + i * 0.32;
+    b.box(x, F + 1.02, rz, 0.19, 0.72, 0.07, belts[i]);
+    b.box(x, F + 1.02, rz, 0.21, 0.1, 0.09, 0x2f2c2a);
+  }
+  b.box(rx + 0.95, F + 1.02, rz, 0.19, 0.72, 0.07, C.beltRed);   // taekwondo
+  b.box(rx + 0.95, F + 1.34, rz, 0.21, 0.16, 0.09, 0x2f2c2a);
+
+  // A gi folded on a bench, off the mat.
+  b.box(0.3, F, 3.0, 2.0, 0.42, 0.55, C.woodDark);
+  b.box(0.3, F + 0.42, 3.0, 2.1, 0.08, 0.62, C.wood);
+  b.box(-0.2, F + 0.5, 3.0, 0.6, 0.16, 0.42, C.gi);
+  b.box(-0.2, F + 0.66, 3.0, 0.56, 0.1, 0.38, 0xd6d4cb);
+  b.box(0.26, F + 0.5, 3.0, 0.2, 0.08, 0.32, C.beltBlue);
+  b.cyl(1.0, F + 0.5, 3.0, 0.09, 0.09, 0.28, 8, 0x7fb0c4);
+  b.cyl(1.0, F + 0.78, 3.0, 0.05, 0.05, 0.06, 8, C.metalDark);
+
+  // A dummy left out on the mat, mid-round.
+  const dx = 0.9, dz = 0.4, dry = -0.5;
+  b.box(dx, F + 0.1, dz, 0.5, 0.34, 1.1, C.bagLeather, dry);
+  const [hx, hz] = loc(dx, dz, dry, 0, -0.72);
+  b.rock(hx, F + 0.27, hz, 0.22, C.bagDark);
+  for (const side of [-1, 1]) {
+    const [ax, az] = loc(dx, dz, dry, side * 0.42, -0.3);
+    b.boxC(ax, F + 0.25, az, 0.2, 0.2, 0.72, C.bagLeather, 0, dry, 0);
+  }
+  const [lgx, lgz] = loc(dx, dz, dry, 0, 0.86);
+  b.boxC(lgx, F + 0.25, lgz, 0.42, 0.22, 0.6, C.bagDark, 0, dry, 0);
+
+  // Spare mats stacked in the corner.
+  for (let i = 0; i < 3; i++) {
+    b.box(-2.7, F + i * 0.11, 2.6, 1.15, 0.11, 0.8, i % 2 ? C.matA : C.matB, 0.2);
+  }
+  pottedPlant(b, 2.8, 2.6, 1.0);
+  void g;
+}
+
+function animBJJ(group) {
+  // The bag hangs off the arm and swings, on two frequencies so it never looks
+  // like a metronome.
+  const pivot = new THREE.Group();
+  pivot.position.set(BAG_X + 0.78, F + 2.3, BAG_Z);
+  group.add(pivot);
+  pivot.add(part(b => {
+    b.cyl(0, -0.16, 0, 0.05, 0.05, 0.16, 6, C.metalDark);
+    b.cyl(0, -1.5, 0, 0.27, 0.24, 1.34, 10, C.bagLeather);
+    b.cyl(0, -1.5, 0, 0.29, 0.29, 0.1, 10, C.bagDark);
+    b.cyl(0, -0.34, 0, 0.28, 0.28, 0.12, 10, C.bagDark);
+  }));
+
+  return [function (t, dt, amt) {
+    pivot.rotation.x = amt * (Math.sin(t * 2.1) * 0.16 + Math.sin(t * 1.31 + 1.2) * 0.06);
+    pivot.rotation.z = amt * Math.sin(t * 1.7 + 0.6) * 0.05;
+  }];
+}
+
+/* =============================================================================
+   Section: Music — decks in the corner
+============================================================================= */
+
+const DECK_Y = F + 0.92;
+
+function buildMusic(b, g) {
+  island(b, ISLAND, 0xcfc7b6);
+  b.cyl(0, F + 0.05, 0.6, 2.7, 2.7, 0.03, 12, 0xbeb5a2);
+
+  // Booth.
+  b.box(0, F, -0.35, 2.6, 0.92, 0.95, C.woodDark);
+  b.box(0, DECK_Y, -0.35, 2.75, 0.1, 1.05, C.wood);
+  g.box(0, F + 0.14, 0.15, 2.3, 0.05, 0.02, C.ledCyan);      // strip under the lip
+
+  // Two decks with a mixer between them. Platters are animated separately.
+  for (const side of [-1, 1]) {
+    const x = side * 0.85;
+    b.box(x, DECK_Y + 0.1, -0.35, 0.78, 0.11, 0.66, C.deckBody);
+    b.box(x + side * 0.3, DECK_Y + 0.21, -0.6, 0.1, 0.03, 0.28, C.metal);   // tonearm
+    b.box(x + side * 0.3, DECK_Y + 0.21, -0.74, 0.08, 0.05, 0.08, C.metalDark);
+    b.box(x - side * 0.31, DECK_Y + 0.21, -0.08, 0.05, 0.02, 0.22, 0xd6d6d0); // pitch
+  }
+  b.box(0, DECK_Y + 0.1, -0.35, 0.72, 0.13, 0.66, C.mixer);
+  for (let i = 0; i < 3; i++) {
+    b.box(-0.2 + i * 0.2, DECK_Y + 0.23, -0.2, 0.06, 0.02, 0.26, 0xd6d6d0);  // faders
+    b.cyl(-0.2 + i * 0.2, DECK_Y + 0.23, -0.52, 0.045, 0.045, 0.04, 6, C.brass);
+  }
+
+  // Laptop at the back of the booth.
+  b.box(0.05, DECK_Y + 0.1, 0.12, 0.6, 0.03, 0.4, C.metal);
+  b.boxC(0.05, DECK_Y + 0.32, -0.06, 0.6, 0.4, 0.03, C.metal, -0.24, 0, 0);
+  g.boxC(0.05, DECK_Y + 0.32, -0.03, 0.53, 0.33, 0.012, 0x25333d, -0.24, 0, 0);
+
+  // Headphones resting on the corner.
+  b.cylC(-1.15, DECK_Y + 0.12, 0.28, 0.16, 0.16, 0.05, 10, 0x33373b, Math.PI / 2, 0, 0);
+  b.cylC(-0.82, DECK_Y + 0.12, 0.28, 0.16, 0.16, 0.05, 10, 0x33373b, Math.PI / 2, 0, 0);
+  b.box(-0.99, DECK_Y + 0.24, 0.28, 0.36, 0.05, 0.06, 0x44484c);
+
+  // Speakers on stands. Cones are animated separately.
+  for (const side of [-1, 1]) {
+    const x = side * 2.6;
+    b.box(x, F, 0.5, 0.5, 0.06, 0.5, C.metalDark);
+    b.cyl(x, F + 0.06, 0.5, 0.05, 0.06, 0.95, 6, C.metalDark);
+    b.box(x, F + 1.0, 0.5, 0.72, 1.05, 0.6, C.speaker, side * 0.32);
+  }
+
+  // Synth on a stand, angled in toward the booth.
+  const syx = -2.4, syz = -1.85, syr = 0.55;
+  for (const side of [-1, 1]) {
+    const [px, pz] = loc(syx, syz, syr, side * 0.66, 0);
+    b.box(px, F, pz, 0.07, 0.72, 0.07, C.metalDark);
+    b.box(px, F, pz, 0.1, 0.05, 0.5, C.metalDark, syr);
+  }
+  b.box(syx, F + 0.72, syz, 1.72, 0.14, 0.54, 0x3f4348, syr);
+  for (let i = 0; i < 13; i++) {
+    const [kx, kz] = loc(syx, syz, syr, -0.72 + i * 0.12, 0.11);
+    const black = (i % 7 === 1 || i % 7 === 3 || i % 7 === 5);
+    b.box(kx, F + 0.86, kz, 0.1, 0.03, 0.26, black ? 0x2c2f33 : C.paper, syr);
+  }
+  for (let i = 0; i < 4; i++) {
+    const [nx, nz] = loc(syx, syz, syr, -0.62 + i * 0.19, -0.16);
+    b.cyl(nx, F + 0.86, nz, 0.04, 0.04, 0.05, 6, C.brass);
+  }
+
+  // Record crate.
+  b.box(2.5, F, -1.9, 0.95, 0.7, 0.8, C.woodDark, -0.35);
+  const r = rng(21);
+  for (let i = 0; i < 9; i++) {
+    b.box(2.5 - 0.3 + i * 0.075, F + 0.16, -1.9 + (i - 4) * 0.028,
+          0.05, 0.62, 0.62, BOOKS[(r() * BOOKS.length) | 0], -0.35);
+  }
+  b.cylC(1.4, F + 0.34, 1.9, 0.34, 0.34, 0.035, 12, C.vinyl, 0, 0, 0);  // one left out
+  b.cylC(1.4, F + 0.36, 1.9, 0.1, 0.1, 0.02, 10, C.brass, 0, 0, 0);
+  pottedPlant(b, -2.9, 2.4, 1.15);
+}
+
+function animMusic(group) {
+  const ups = [];
+  const platters = [];
+
+  for (const side of [-1, 1]) {
+    const x = side * 0.85;
+    const p = part(b => {
+      b.cyl(0, -0.025, 0, 0.29, 0.29, 0.05, 12, C.platter);
+      b.cyl(0, 0.025, 0, 0.26, 0.26, 0.012, 12, C.vinyl);
+      b.cyl(0, 0.037, 0, 0.085, 0.085, 0.012, 10, 0xd9c98f);
+      b.box(0.14, 0.03, 0, 0.16, 0.014, 0.02, 0x4a4643);   // so the spin reads
+    });
+    p.position.set(x, DECK_Y + 0.19, -0.35);
+    group.add(p);
+    platters.push(p);
+  }
+  ups.push(function (t, dt, amt) {
+    for (const p of platters) p.rotation.y += dt * (0.35 + 3.1 * amt);
+  });
+
+  // Mixer meters.
+  const meters = [];
+  const meterRoot = new THREE.Group();
+  meterRoot.position.set(0, DECK_Y + 0.24, -0.35);
+  group.add(meterRoot);
+  for (let i = 0; i < 6; i++) {
+    const m = part(b => b.box(0, 0, 0, 0.035, 1, 0.05, i > 3 ? C.ledAmber : C.ledCyan), true);
+    m.position.set(-0.13 + i * 0.052, 0, 0.22);
+    meterRoot.add(m);
+    meters.push(m);
+  }
+  ups.push(function (t, dt, amt) {
+    for (let i = 0; i < meters.length; i++) {
+      const level = walk(t * 3.4 + i * 5.1);
+      meters[i].scale.y = 0.02 + level * 0.1 * amt;
+    }
+  });
+
+  // Speaker cones, pushing air.
+  const cones = [];
+  for (const side of [-1, 1]) {
+    const g2 = new THREE.Group();
+    g2.position.set(side * 2.6, F + 1.0, 0.5);
+    g2.rotation.y = side * 0.32;
+    group.add(g2);
+    const woof = part(b => b.cylC(0, 0, 0, 0.2, 0.2, 0.07, 10, C.cone, Math.PI / 2, 0, 0));
+    woof.position.set(0, 0.32, 0.31);
+    const tweet = part(b => b.cylC(0, 0, 0, 0.09, 0.09, 0.06, 8, C.cone, Math.PI / 2, 0, 0));
+    tweet.position.set(0, 0.78, 0.31);
+    g2.add(woof); g2.add(tweet);
+    cones.push(woof, tweet);
+  }
+  ups.push(function (t, dt, amt) {
+    const pulse = 1 + Math.sin(t * 8.4) * 0.09 * amt + Math.sin(t * 3.1) * 0.05 * amt;
+    for (const c of cones) c.scale.set(pulse, 1, pulse);
+  });
+
+  return ups;
+}
+
+/* =============================================================================
+   Section: Projects
+============================================================================= */
+
+function buildProjects(b, g) {
+  island(b, ISLAND, C.baseTop);
+  b.cyl(0, F + 0.05, 0.2, 3.0, 3.0, 0.04, 12, C.rug);
+  b.cyl(0, F + 0.09, 0.2, 2.3, 2.3, 0.012, 12, 0xdcc6a6);
+
+  b.box(0, F + 0.09, -0.2, 2.3, 0.95, 1.45, C.chest);
+  b.box(0, F + 0.09, -0.2, 2.36, 0.12, 1.51, C.chestLid);
+  b.box(0, F + 0.92, -0.2, 2.36, 0.12, 1.51, C.chestLid);
+  b.box(0, F + 0.14, 0.56, 0.28, 0.7, 0.06, C.brass);
+  b.box(0, F + 0.46, 0.56, 0.22, 0.22, 0.08, C.brass);
+  for (const sx of [-0.95, 0.95]) {
+    b.box(sx, F + 0.14, 0.56, 0.14, 0.78, 0.05, C.brass);
+    b.box(sx, F + 0.14, -0.96, 0.14, 0.78, 0.05, C.brass);
+  }
+
+  b.box(-1.85, F + 0.09, 1.15, 0.34, 0.34, 0.34, C.toyBlue, 0.4);
+  b.box(-1.5, F + 0.09, 1.5, 0.26, 0.26, 0.26, C.toyYellow, -0.2);
+  b.rock(1.7, F + 0.32, 1.2, 0.24, C.toyRed);
+  b.box(1.35, F + 0.09, 1.7, 0.5, 0.1, 0.34, C.toyGreen, 0.6);
+
   shelf(b, -2.95, -0.6, 2.4, 1.55, Math.PI / 2, 55);
   crate(b, 2.85, F, -1.5, 0.7, 0.25);
   crate(b, 2.75, F + 0.7, -1.45, 0.52, -0.15);
   crate(b, 2.9, F, -0.6, 0.5, 0.5);
   pottedPlant(b, -2.6, 2.4, 1.15);
+  void g;
 }
 
-/** The chest lid, hinged along its back edge. */
-function buildChestLid() {
-  const b = new Builder();
-  b.box(0, 0, 0.72, 2.36, 0.2, 1.55, C.chestLid);
-  b.box(0, 0.18, 0.72, 2.2, 0.1, 1.4, C.chest);
-  b.box(0, 0.12, 1.44, 0.22, 0.16, 0.1, C.brass);
-  for (const sx of [-0.95, 0.95]) b.box(sx, 0.18, 0.72, 0.12, 0.06, 1.5, C.brass);
-  return solidMesh(b);
-}
+function animProjects(group, def) {
+  const ups = [];
 
-/** One toy per project, sitting in the chest until it is opened. */
-function buildToys(count) {
-  const group = new THREE.Group();
+  const pivot = new THREE.Group();
+  pivot.position.set(0, F + 0.99, -0.92);              // hinge along the back edge
+  const lid = new Builder();
+  lid.box(0, 0, 0.72, 2.36, 0.2, 1.55, C.chestLid);
+  lid.box(0, 0.18, 0.72, 2.2, 0.1, 1.4, C.chest);
+  lid.box(0, 0.12, 1.44, 0.22, 0.16, 0.1, C.brass);
+  for (const sx of [-0.95, 0.95]) lid.box(sx, 0.18, 0.72, 0.12, 0.06, 1.5, C.brass);
+  pivot.add(solidMesh(lid));
+  group.add(pivot);
+
+  // One toy per item in content.js.
   const palette = [C.toyRed, C.toyBlue, C.toyYellow, C.toyGreen, C.toyPurple];
-  const n = Math.max(1, Math.min(7, count));
-  for (let i = 0; i < n; i++) {
-    const b = new Builder();
+  const count = Math.max(1, Math.min(7, (def.items && def.items.length) || 4));
+  const toys = new THREE.Group();
+  toys.position.set(0, F + 0.66, 0);
+  group.add(toys);
+
+  for (let i = 0; i < count; i++) {
     const col = palette[i % palette.length];
+    const b = new Builder();
     switch (i % 5) {
-      case 0:                                    // rocket
+      case 0:
         b.cyl(0, -0.2, 0, 0.11, 0.13, 0.4, 8, col);
         b.cone(0, 0.3, 0, 0.13, 0.2, 8, C.paper);
         b.box(-0.14, -0.2, 0, 0.06, 0.16, 0.16, C.paper);
         b.box(0.14, -0.2, 0, 0.06, 0.16, 0.16, C.paper);
         break;
-      case 1:                                    // cube
+      case 1:
         b.box(-0.16, -0.16, -0.16, 0.32, 0.32, 0.32, col);
         b.box(-0.17, -0.02, -0.17, 0.34, 0.06, 0.34, C.paper);
         break;
-      case 2:                                    // ball
+      case 2:
         b.rock(0, 0, 0, 0.2, col, 1);
         break;
-      case 3:                                    // controller
+      case 3:
         b.box(-0.24, -0.08, -0.14, 0.48, 0.16, 0.28, col);
         b.cyl(-0.12, 0.08, 0, 0.05, 0.05, 0.04, 6, C.paper);
         b.cyl(0.12, 0.08, 0, 0.05, 0.05, 0.04, 6, C.paper);
         break;
-      default:                                   // brush
+      default:
         b.cyl(0, -0.24, 0, 0.035, 0.035, 0.42, 6, C.woodLight);
         b.cyl(0, 0.18, 0, 0.055, 0.05, 0.1, 6, C.brass);
         b.cyl(0, 0.28, 0, 0.04, 0.06, 0.12, 6, col);
     }
     const mesh = solidMesh(b);
-    const a = (i / n) * Math.PI * 2 + 0.6;
-    mesh.userData.home = new THREE.Vector3(Math.cos(a) * 0.64, 0, -0.2 + Math.sin(a) * 0.36);
+    const a = (i / count) * Math.PI * 2 + 0.6;
+    mesh.userData.home = { x: Math.cos(a) * 0.64, z: -0.2 + Math.sin(a) * 0.36 };
     mesh.userData.phase = i * 0.8;
     mesh.userData.spin = 0.4 + (i % 3) * 0.25;
     mesh.position.set(0, -0.34, -0.4);
-    group.add(mesh);
+    toys.add(mesh);
   }
-  return group;
+
+  ups.push(function (t, dt, amt) {
+    // A touch past the stop, then back — a lid thrown open, not eased open.
+    pivot.rotation.x = -1.85 * amt - Math.sin(amt * Math.PI) * 0.16;
+    for (const m of toys.children) {
+      const home = m.userData.home;
+      const wobble = Math.sin(t * 1.8 + m.userData.phase) * 0.05;
+      m.position.x += (home.x * amt - m.position.x) * Math.min(1, dt * 5);
+      m.position.z += ((home.z * amt) + (1 - amt) * -0.4 - m.position.z) * Math.min(1, dt * 5);
+      m.position.y += (((0.5 + wobble) * amt - 0.34 * (1 - amt)) - m.position.y) * Math.min(1, dt * 5);
+      m.rotation.y += dt * m.userData.spin * (0.15 + amt);
+      m.visible = m.position.y > -0.3;
+    }
+  });
+
+  return ups;
 }
 
-/* ---- Zone: About ------------------------------------------------------------ */
+/* =============================================================================
+   Section: About
+============================================================================= */
+
+let ABOUT_TOP = F + 0.8;
 
 function buildAbout(b, g) {
-  b.box(0, F, 0, 7.4, 0.05, 7.4, C.aboutFloor);
-  b.cyl(0, F + 0.05, 0.75, 2.5, 2.5, 0.035, 12, C.rug2);
+  island(b, ISLAND, C.aboutFloor);
+  b.cyl(0, F + 0.05, 0.75, 2.5, 2.5, 0.03, 12, C.rug2);
 
   shelf(b, -2.95, -0.5, 3.0, 2.0, Math.PI / 2, 17);
   shelf(b, 2.95, -0.8, 2.2, 1.55, -Math.PI / 2, 41);
 
   const topY = desk(b, 0, 0.55, 2.3, 1.05, 0, C.wood);
-  b.box(-0.35, topY, 0.5, 0.72, 0.03, 0.5, C.metal);                       // laptop
+  ABOUT_TOP = topY;
+  b.box(-0.35, topY, 0.5, 0.72, 0.03, 0.5, C.metal);
   b.boxC(-0.35, topY + 0.24, 0.24, 0.72, 0.46, 0.03, C.metal, -0.22, 0, 0);
   g.boxC(-0.35, topY + 0.24, 0.27, 0.64, 0.38, 0.012, 0x2b3a44, -0.22, 0, 0);
-  b.box(0.58, topY, 0.38, 0.16, 0.16, 0.16, C.paper);                      // mug
+  b.box(0.58, topY, 0.38, 0.16, 0.16, 0.16, C.paper);
   b.cylC(0.69, topY + 0.08, 0.38, 0.05, 0.05, 0.03, 8, C.paper, 0, 0, Math.PI / 2);
   b.box(0.8, topY, 0.78, 0.34, 0.05, 0.24, C.paper, 0.3);
   b.box(0.83, topY + 0.05, 0.8, 0.3, 0.02, 0.2, 0xe6e2d8, 0.3);
 
-  b.cyl(-1.02, topY, 0.22, 0.14, 0.16, 0.04, 8, C.metalDark);              // lamp
+  b.cyl(-1.02, topY, 0.22, 0.14, 0.16, 0.04, 8, C.metalDark);
   b.boxC(-1.02, topY + 0.24, 0.22, 0.04, 0.44, 0.04, C.metalDark, 0.18, 0, 0);
-  b.cone(-0.94, topY + 0.5, 0.3, 0.17, 0.2, 8, C.brass, Math.PI, 0, 0.3);
-  g.rock(-0.94, topY + 0.42, 0.3, 0.09, C.lampGlow);
+  b.cone(-0.94, topY + 0.5, 0.3, 0.17, 0.2, 8, C.brass, Math.PI, 0, 0);
 
   chair(b, 0.1, 1.7, Math.PI, C.woodDark);
   pottedPlant(b, 2.6, 1.9, 1.3);
@@ -545,75 +931,127 @@ function buildAbout(b, g) {
   }
 }
 
-/* ---- Plinth and corners ------------------------------------------------------ */
+function animAbout(group) {
+  const ups = [];
+  const topY = ABOUT_TOP;
 
-const PLAT = 21;
+  // The lamp warms up.
+  const bulb = part(b => b.rock(0, 0, 0, 0.09, C.lampGlow), true);
+  bulb.position.set(-0.94, topY + 0.42, 0.3);
+  group.add(bulb);
+  ups.push(function (t, dt, amt) {
+    const s = 0.55 + amt * (0.75 + Math.sin(t * 2.6) * 0.07 + Math.sin(t * 7.3) * 0.03);
+    bulb.scale.setScalar(s);
+  });
 
-function buildPlatform(b) {
-  b.box(0, -1.35, 0, PLAT + 1.1, 0.45, PLAT + 1.1, C.baseDark);
-  b.box(0, -0.90, 0, PLAT + 0.6, 0.45, PLAT + 0.6, C.baseMid);
-  b.box(0, -0.45, 0, PLAT, 0.8, PLAT, C.baseTop);      // top at F
-
-  b.box(0, F, 0, 3.0, 0.02, PLAT - 1.2, C.path);
-  b.box(0, F, 0, PLAT - 1.2, 0.02, 3.0, C.path);
-  b.cyl(0, F, 0, 2.6, 2.6, 0.03, 16, 0xcbc2af);
-
-  const e = PLAT / 2 - 0.15;
-  for (const [x, z, w, d] of [[0, -e, PLAT, 0.3], [0, e, PLAT, 0.3],
-                              [-e, 0, 0.3, PLAT], [e, 0, 0.3, PLAT]]) {
-    b.box(x, F, z, w, 0.1, d, C.edge);
+  // Steam off the mug.
+  const puffs = [];
+  for (let i = 0; i < 3; i++) {
+    const m = new THREE.Mesh(
+      new THREE.BoxGeometry(0.07, 0.07, 0.07),
+      new THREE.MeshBasicMaterial({ color: C.steam, transparent: true, opacity: 0 })
+    );
+    m.position.set(0.58, topY + 0.18, 0.38);
+    group.add(m);
+    puffs.push(m);
   }
+  ups.push(function (t, dt, amt) {
+    for (let i = 0; i < puffs.length; i++) {
+      const p = ((t * 0.42) + i / puffs.length) % 1;
+      const m = puffs[i];
+      m.position.y = topY + 0.18 + p * 0.42;
+      m.position.x = 0.58 + Math.sin(p * 5.2 + i) * 0.05;
+      m.scale.setScalar(0.5 + p * 1.1);
+      m.material.opacity = amt * 0.5 * Math.sin(p * Math.PI);
+    }
+  });
+
+  return ups;
 }
 
-function buildCorners(b, g) {
-  // Reading corner.
-  shelf(b, -7.9, -7.4, 2.8, 2.1, 0.4, 3);
-  b.cyl(-6.1, F, -8.6, 0.2, 0.24, 0.05, 8, C.metalDark);
-  b.cyl(-6.1, F + 0.05, -8.6, 0.035, 0.035, 1.5, 6, C.metalDark);
-  b.cone(-6.1, F + 1.68, -8.6, 0.28, 0.3, 8, C.brass, Math.PI, 0, 0);
-  g.rock(-6.1, F + 1.56, -8.6, 0.11, C.lampGlow);
-  chair(b, -6.4, -7.0, 0.7, C.fabric);
-
-  // Storage corner.
-  crate(b, 7.7, F, -7.9, 0.85, 0.25);
-  crate(b, 7.5, F + 0.85, -7.8, 0.62, -0.1);
-  crate(b, 8.5, F, -6.9, 0.62, 0.5);
-  crate(b, 6.7, F, -8.6, 0.55, -0.35);
-  pottedPlant(b, 6.4, -7.0, 1.5);
-
-  // Second reading corner.
-  shelf(b, 8.0, 7.5, 2.6, 1.75, -0.4, 88);
-  chair(b, 6.5, 8.2, -0.9, C.fabric);
-  b.cyl(7.0, F, 7.2, 0.42, 0.46, 0.5, 10, C.woodDark);
-  b.cyl(7.0, F + 0.5, 7.2, 0.5, 0.5, 0.07, 10, C.wood);
-  pottedPlant(b, 8.8, 6.2, 1.2);
-
-  // Floor books and a rug.
-  b.cyl(-7.6, F, 7.6, 1.8, 1.8, 0.04, 12, C.rug2);
-  pottedPlant(b, -8.3, 6.5, 1.4);
-  for (let i = 0; i < 5; i++) {
-    b.box(-7.1, F + 0.04 + i * 0.075, 7.8, 0.44, 0.075, 0.34, BOOKS[i], i * 0.14);
-  }
-  b.box(-8.3, F + 0.04, 8.2, 0.5, 0.09, 0.38, BOOKS[6], 0.5);
-  crate(b, -6.2, F, 8.4, 0.5, 0.2);
-}
-
-/* ---- The jar ----------------------------------------------------------------- */
+/* =============================================================================
+   Section: the jar
+============================================================================= */
 
 const JAR_R = 0.56;
 const JAR_H = 1.5;
-const JAR_Y = F + 1.32;      // where the inside of the jar starts
+const JAR_Y = F + 1.32;
 
-function buildPedestal(b) {
+function buildJar(b, g) {
+  island(b, 3.4, C.baseTop);
   b.cyl(0, F, 0, 1.3, 1.45, 0.22, 12, C.baseMid);
   b.cyl(0, F + 0.22, 0, 1.04, 1.16, 0.2, 12, C.edge);
   b.cyl(0, F + 0.42, 0, 0.66, 0.8, 0.72, 12, C.baseTop);
   b.cyl(0, F + 1.14, 0, 0.86, 0.68, 0.14, 12, C.edge);
+  b.cyl(0, JAR_Y + JAR_H - 0.04, 0, JAR_R + 0.06, JAR_R + 0.06, 0.1, 12, 0xa8bfc9);
+  b.cyl(0, JAR_Y - 0.07, 0, JAR_R + 0.05, JAR_R + 0.05, 0.08, 12, 0xa8bfc9);
+  void g;
 }
 
-/* ===========================================================================
+/* Set up in the scene section below, since the jar has to be reachable by the
+   visitor-count code as well as by its own animation. */
+let sandCol = null, glassMesh = null, grain = null;
+
+function animJar(group) {
+  const ups = [];
+
+  sandCol = new THREE.Mesh(
+    new THREE.CylinderGeometry(JAR_R - 0.07, JAR_R - 0.07, 1, 12),
+    new THREE.MeshLambertMaterial({ color: C.sand })
+  );
+  sandCol.receiveShadow = true;
+  sandCol.scale.y = 0.0001;
+  sandCol.position.set(0, JAR_Y, 0);
+  group.add(sandCol);
+
+  glassMesh = new THREE.Mesh(
+    new THREE.CylinderGeometry(JAR_R, JAR_R, JAR_H, 12, 1, true),
+    new THREE.MeshLambertMaterial({
+      color: C.glass, transparent: true, opacity: 0.42,
+      depthWrite: false, side: THREE.DoubleSide
+    })
+  );
+  glassMesh.position.set(0, JAR_Y + JAR_H / 2, 0);
+  group.add(glassMesh);
+
+  grain = new THREE.Mesh(
+    new THREE.BoxGeometry(0.11, 0.11, 0.11),
+    new THREE.MeshLambertMaterial({ color: C.sandDark })
+  );
+  grain.castShadow = true;
+  grain.visible = false;
+  group.add(grain);
+
+  // Motes hanging in the jar — decorative, and deliberately not tied to the
+  // count, so nothing here implies the number is moving.
+  const motes = [];
+  for (let i = 0; i < 7; i++) {
+    const m = new THREE.Mesh(
+      new THREE.BoxGeometry(0.05, 0.05, 0.05),
+      new THREE.MeshBasicMaterial({ color: C.sandDark, transparent: true, opacity: 0 })
+    );
+    group.add(m);
+    motes.push(m);
+  }
+
+  ups.push(function (t, dt, amt) {
+    for (let i = 0; i < motes.length; i++) {
+      const m = motes[i];
+      const p = ((t * 0.11) + i / motes.length) % 1;
+      const a = i * 2.4 + t * 0.25;
+      const r = (0.1 + hash1(i * 3.1) * 0.3) * (JAR_R - 0.12);
+      m.position.set(Math.cos(a) * r, JAR_Y + JAR_H * (0.92 - p * 0.78), Math.sin(a) * r);
+      m.material.opacity = amt * 0.75 * Math.sin(p * Math.PI);
+      m.rotation.set(a, a * 1.4, 0);
+    }
+  });
+
+  return ups;
+}
+
+/* =============================================================================
    Scene
-=========================================================================== */
+============================================================================= */
 
 const canvas = document.getElementById("stage");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false });
@@ -624,76 +1062,101 @@ renderer.shadowMap.type = THREE.PCFShadowMap;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xf7f6f3);
 
-const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 200);
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 240);
 
 scene.add(new THREE.HemisphereLight(0xfff6e8, 0x9c9384, 1.0));
 const sun = new THREE.DirectionalLight(0xfff2dd, 2.0);
-sun.position.set(9, 14, 7);
+sun.position.set(12, 20, 9);
 sun.castShadow = true;
 sun.shadow.mapSize.set(1024, 1024);
-sun.shadow.camera.left = -15;
-sun.shadow.camera.right = 15;
-sun.shadow.camera.top = 15;
-sun.shadow.camera.bottom = -15;
+sun.shadow.camera.left = -21;
+sun.shadow.camera.right = 21;
+sun.shadow.camera.top = 21;
+sun.shadow.camera.bottom = -21;
 sun.shadow.camera.near = 1;
-sun.shadow.camera.far = 45;
-sun.shadow.bias = -0.0018;
+sun.shadow.camera.far = 60;
+sun.shadow.bias = -0.0015;
+sun.shadow.normalBias = 0.05;   // stops the stepped cylinders self-shadowing
 scene.add(sun);
 const fill = new THREE.DirectionalLight(0xdfe8f2, 0.3);
-fill.position.set(-8, 5, -6);
+fill.position.set(-10, 6, -8);
 scene.add(fill);
 
 const world = new THREE.Group();
 scene.add(world);
 
-{
-  const b = new Builder(), g = new Builder();
-  buildPlatform(b);
-  buildCorners(b, g);
-  buildPedestal(b);
-  world.add(solidMesh(b));
-  if (!g.empty) world.add(glowMesh(g));
-}
+/* ---- Islets ------------------------------------------------------------------
+   Small uninhabited slabs drifting below and outside the ring. They do nothing
+   except give the empty space a sense of depth. */
 
-/* ---- Zones ------------------------------------------------------------------- */
+function buildIslets() {
+  const specs = [
+    { a: 0.5,  r: 15.0, y: -1.7, s: 2.8, kind: 0 },
+    { a: 2.1,  r: 15.6, y: -2.4, s: 2.2, kind: 1 },
+    { a: 3.5,  r: 14.8, y: -1.4, s: 3.0, kind: 2 },
+    { a: 4.9,  r: 15.9, y: -2.7, s: 2.4, kind: 1 },
+    { a: 5.9,  r: 14.4, y: -2.0, s: 2.0, kind: 0 }
+  ];
+  for (const sp of specs) {
+    const b = new Builder();
+    island(b, sp.s, C.baseTop);
+    if (sp.kind === 0) {
+      pottedPlant(b, 0, 0, 1.1);
+      crate(b, 0.65, F, 0.5, 0.42, 0.3);
+    } else if (sp.kind === 1) {
+      crate(b, 0, F, 0, 0.55, 0.2);
+      crate(b, -0.1, F + 0.55, 0.05, 0.4, -0.3);
+    } else {
+      for (let i = 0; i < 4; i++) {
+        b.box(0, F + i * 0.075, 0, 0.44, 0.075, 0.34, BOOKS[i + 1], i * 0.18);
+      }
+      pottedPlant(b, -0.7, 0.55, 0.8);
+    }
+    const g = new THREE.Group();
+    g.position.set(Math.sin(sp.a) * sp.r, sp.y, Math.cos(sp.a) * sp.r);
+    g.rotation.y = sp.a + 0.4;
+    g.add(solidMesh(b));
+    world.add(g);
+  }
+}
+buildIslets();
+
+/* ---- Sections ----------------------------------------------------------------
+   Array order in content.js is the order round the ring. */
+
+const RING_R = 11.2;
 
 const ZONE_BUILD = {
-  rldatix: buildRLDatix,
-  investing: buildInvesting,
-  projects: buildProjects,
-  about: buildAbout
-};
-
-const PLACE = {
-  rldatix:   { x: 0, z: -6.5 },
-  investing: { x: 6.5, z: 0 },
-  projects:  { x: 0, z: 6.5 },
-  about:     { x: -6.5, z: 0 }
+  rldatix:   { build: buildRLDatix,   anim: animRLDatix },
+  investing: { build: buildInvesting, anim: animInvesting },
+  bjj:       { build: buildBJJ,       anim: animBJJ },
+  music:     { build: buildMusic,     anim: animMusic },
+  projects:  { build: buildProjects,  anim: animProjects },
+  about:     { build: buildAbout,     anim: animAbout },
+  jar:       { build: buildJar,       anim: animJar }
 };
 
 const zones = [];
 const pickables = [];
 
-for (const def of ZONES) {
-  const place = PLACE[def.id];
-  const build = ZONE_BUILD[def.id];
-  if (!place || !build) continue;
+function addZone(def, x, z, angle, hitW, hitH) {
+  const spec = ZONE_BUILD[def.id];
+  if (!spec) return null;
 
   const group = new THREE.Group();
-  group.position.set(place.x, 0, place.z);
-  group.rotation.y = Math.atan2(place.x, place.z);
+  group.position.set(x, 0, z);
+  group.rotation.y = angle;
 
   const b = new Builder(), g = new Builder();
-  build(b, g);
+  spec.build(b, g);
   group.add(solidMesh(b));
   if (!g.empty) group.add(glowMesh(g));
 
-  // An invisible slab over the scene catches clicks and hovers.
   const hit = new THREE.Mesh(
-    new THREE.BoxGeometry(7.4, 3.2, 7.4),
+    new THREE.BoxGeometry(hitW, hitH, hitW),
     new THREE.MeshBasicMaterial({ visible: false })
   );
-  hit.position.y = F + 1.6;
+  hit.position.y = F + hitH / 2 - 0.4;
   group.add(hit);
 
   world.add(group);
@@ -701,96 +1164,44 @@ for (const def of ZONES) {
   const zone = {
     def: def,
     group: group,
-    hit: hit,
-    // A ground point just beyond the plinth. Orthographic projection is
-    // affine, so a point outside the plinth square is always outside its
-    // silhouette — at any orbit angle.
-    anchor: new THREE.Vector3(Math.sign(place.x) * 11.6, 0, Math.sign(place.z) * 11.6),
-    focusAz: Math.atan2(place.x, place.z),
-    label: null
+    baseY: 0,
+    amt: 0,          // 0 asleep, 1 selected — everything animated reads this
+    lift: 0,
+    focusAz: def.keepAz ? null : angle,
+    updaters: spec.anim ? spec.anim(group, def) : []
   };
   hit.userData.zone = zone;
   zones.push(zone);
   pickables.push(hit);
+  return zone;
 }
 
-/* ---- Chest lid and toys ------------------------------------------------------- */
+ZONES.forEach(function (def, i) {
+  const a = (i / ZONES.length) * Math.PI * 2;
+  addZone(def, Math.sin(a) * RING_R, Math.cos(a) * RING_R, a, ISLAND, 3.6);
+});
+addZone(JAR_ZONE, 0, 0, 0, 3.2, 3.8);
 
-const projectsZone = zones.find(function (z) { return z.def.id === "projects"; });
-let chestPivot = null, toys = null;
-
-if (projectsZone) {
-  chestPivot = new THREE.Group();
-  chestPivot.position.set(0, F + 0.95, -0.92);      // hinge along the back edge
-  chestPivot.add(buildChestLid());
-  projectsZone.group.add(chestPivot);
-
-  toys = buildToys(projectsZone.def.items ? projectsZone.def.items.length : 4);
-  toys.position.set(0, F + 0.62, 0);
-  projectsZone.group.add(toys);
-}
-
-/* ---- The jar of sand ---------------------------------------------------------- */
-
-const sandCol = new THREE.Mesh(
-  new THREE.CylinderGeometry(JAR_R - 0.07, JAR_R - 0.07, 1, 12),
-  new THREE.MeshLambertMaterial({ color: C.sand })
-);
-sandCol.receiveShadow = true;
-sandCol.scale.y = 0.0001;
-sandCol.position.set(0, JAR_Y, 0);
-world.add(sandCol);
-
-const glass = new THREE.Mesh(
-  new THREE.CylinderGeometry(JAR_R, JAR_R, JAR_H, 12, 1, true),
-  new THREE.MeshLambertMaterial({
-    color: C.glass, transparent: true, opacity: 0.42,
-    depthWrite: false, side: THREE.DoubleSide
-  })
-);
-glass.position.set(0, JAR_Y + JAR_H / 2, 0);
-world.add(glass);
-
-{
-  const b = new Builder();
-  b.cyl(0, JAR_Y + JAR_H - 0.04, 0, JAR_R + 0.06, JAR_R + 0.06, 0.1, 12, 0xa8bfc9);
-  b.cyl(0, JAR_Y - 0.07, 0, JAR_R + 0.05, JAR_R + 0.05, 0.08, 12, 0xa8bfc9);
-  world.add(solidMesh(b));
-}
-
-const grain = new THREE.Mesh(
-  new THREE.BoxGeometry(0.11, 0.11, 0.11),
-  new THREE.MeshLambertMaterial({ color: C.sandDark })
-);
-grain.castShadow = true;
-grain.visible = false;
-world.add(grain);
-
-/* ===========================================================================
+/* =============================================================================
    Camera, controls, picking
-=========================================================================== */
-
-/* The camera is described by how much world it must FIT, horizontally and
-   vertically, rather than by a single zoom number. A portrait phone and a wide
-   desktop need very different frustums to show the same room, and fitting on
-   the smaller axis alone crops the plinth off the sides. */
+============================================================================= */
 
 let cssW = 1, cssH = 1;
 
 function homeFor() {
-  // Standing more overhead on a tall screen puts the room's height to work
-  // instead of leaving it as empty paper.
+  // Standing more overhead on a tall screen puts the height to work instead of
+  // leaving it as empty paper. The ring is circular, so no azimuth is narrower.
   return (cssH > cssW * 1.15)
-    ? { az: Math.PI * 0.08, el: 1.00, fitH: 13.4, fitV: 12.4 }
-    : { az: Math.PI * 0.23, el: 0.62, fitH: 16.8, fitV: 10.6 };
+    ? { az: Math.PI * 0.1, el: 1.18, fitH: 15.4, fitV: 14.4 }   // islets may crop; sections never do
+    : { az: Math.PI * 0.23, el: 0.62, fitH: 17.4, fitV: 12.5 };
 }
 
 let HOME = homeFor();
-HOME.target = new THREE.Vector3(0, 1.3, 0);
+HOME.target = new THREE.Vector3(0, 1.1, 0);
 
 const cam = {
   az: HOME.az, el: HOME.el, fitH: HOME.fitH, fitV: HOME.fitV,
-  scale: 2.0, sx: 0, sy: 0, w: 1, h: 1, target: HOME.target.clone()
+  scale: 1.9, sx: 0, sy: 0, w: 1, h: 1, target: HOME.target.clone()
 };
 const want = {
   az: HOME.az, el: HOME.el, fitH: HOME.fitH, fitV: HOME.fitV,
@@ -800,7 +1211,7 @@ const want = {
 let userMoved = false;
 
 function applyCamera() {
-  const R = 60;
+  const R = 90;
   camera.position.set(
     cam.target.x + R * Math.cos(cam.el) * Math.sin(cam.az),
     cam.target.y + R * Math.sin(cam.el),
@@ -814,16 +1225,12 @@ function applyCamera() {
   const h = w / aspect;
   cam.w = w; cam.h = h;
 
-  // Shifting the frustum rather than the target keeps the focused scene clear
-  // of the panel without having to guess at screen-space axes.
   camera.left = -w + cam.sx;
   camera.right = w + cam.sx;
   camera.top = h + cam.sy;
   camera.bottom = -h + cam.sy;
   camera.updateProjectionMatrix();
 }
-
-/* ---- Pointer ------------------------------------------------------------------ */
 
 const pointers = new Map();
 let dragging = false, movedBy = 0, downAt = 0, pinchDist = 0;
@@ -853,7 +1260,7 @@ canvas.addEventListener("pointermove", function (e) {
     const p = [...pointers.values()];
     const d = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
     if (pinchDist > 0 && d > 0) {
-      want.scale = clamp(want.scale * (pinchDist / d), 0.32, 1.9);
+      want.scale = clamp(want.scale * (pinchDist / d), 0.3, 1.9);
       cam.scale = want.scale;
       userMoved = true;
     }
@@ -865,7 +1272,7 @@ canvas.addEventListener("pointermove", function (e) {
   if (!dragging) return;
   movedBy += Math.abs(dx) + Math.abs(dy);
   want.az -= dx * 0.0085;
-  want.el = clamp(want.el + dy * 0.006, 0.22, 1.32);
+  want.el = clamp(want.el + dy * 0.006, 0.22, 1.36);
   cam.az = want.az;
   cam.el = want.el;
   userMoved = true;
@@ -892,12 +1299,10 @@ canvas.addEventListener("pointercancel", endPointer);
 
 canvas.addEventListener("wheel", function (e) {
   e.preventDefault();
-  want.scale = clamp(want.scale * (1 + e.deltaY * 0.0012), 0.32, 1.9);
+  want.scale = clamp(want.scale * (1 + e.deltaY * 0.0012), 0.3, 1.9);
   userMoved = true;
   touched();
 }, { passive: false });
-
-/* ---- Raycasting ---------------------------------------------------------------- */
 
 const ray = new THREE.Raycaster();
 const ndc = new THREE.Vector2();
@@ -911,14 +1316,13 @@ function pick(px, py) {
   return hits.length ? hits[0].object.userData.zone : null;
 }
 
+/* Nothing is labelled, so hovering has to say "this is a thing" by itself: the
+   island under the cursor floats up a little. */
 function hoverAt(px, py) {
   const z = pick(px, py);
   if (z === hovered) return;
   hovered = z;
   document.body.classList.toggle("overzone", !!z);
-  for (const zone of zones) {
-    if (zone.label) zone.label.classList.toggle("hot", zone === z);
-  }
 }
 
 function clickAt(px, py) {
@@ -926,9 +1330,9 @@ function clickAt(px, py) {
   if (z) focusZone(z); else closePanel();
 }
 
-/* ===========================================================================
+/* =============================================================================
    Panel and focus
-=========================================================================== */
+============================================================================= */
 
 const panel = document.getElementById("panel");
 const elEyebrow = document.getElementById("panelEyebrow");
@@ -937,26 +1341,12 @@ const elLede = document.getElementById("panelLede");
 const elText = document.getElementById("panelText");
 const elItems = document.getElementById("panelItems");
 const elTodo = document.getElementById("panelTodo");
-const labelsRoot = document.getElementById("labels");
 
 let activeZone = null;
 let azBeforeFocus = HOME.az;
 
-for (const zone of zones) {
-  const el = document.createElement("div");
-  el.className = "zone-label";
-  el.textContent = zone.def.label;
-  el.addEventListener("click", function (e) { e.stopPropagation(); focusZone(zone); });
-  el.addEventListener("pointerenter", function () { el.classList.add("hot"); });
-  el.addEventListener("pointerleave", function () { el.classList.remove("hot"); });
-  labelsRoot.appendChild(el);
-  zone.label = el;
-}
-
-/** Push the view clear of whichever edge the panel occupies.
-    Measured against the frustum the camera is heading FOR, not the one it
-    currently has — otherwise the shift is sized from the old zoom level and
-    the focused scene lands well off to one side. */
+/** Push the view clear of whichever edge the panel occupies. Measured against
+    the frustum the camera is heading FOR, not the one it currently has. */
 function applyPanelShift() {
   if (!activeZone) { want.sx = 0; want.sy = 0; return; }
   const r = panel.getBoundingClientRect();
@@ -975,15 +1365,16 @@ function focusZone(zone) {
   if (!activeZone) azBeforeFocus = want.az;
   activeZone = zone;
 
-  want.az = zone.focusAz;
-  // Looking down a little more keeps the side of the plinth out of the frame.
   const portrait = cssH > cssW * 1.15;
+  // Offset off the island's facing, so a focused scene reads as a diorama in
+  // three-quarters rather than flattening into a face-on rectangle.
+  if (zone.focusAz !== null) want.az = zone.focusAz + 0.34;
   want.el = portrait ? 0.74 : 0.66;
-  // Tighter on a phone, where the panel takes the bottom rather than the side.
-  want.fitH = portrait ? 5.6 : 8.4;
-  want.fitV = portrait ? 4.6 : 5.3;
+  const small = zone.def.id === "jar";
+  want.fitH = portrait ? (small ? 3.6 : 5.6) : (small ? 5.4 : 8.4);
+  want.fitV = portrait ? (small ? 3.0 : 4.6) : (small ? 3.4 : 5.3);
   want.scale = 1;
-  want.target.set(zone.group.position.x, 1.5, zone.group.position.z);
+  want.target.set(zone.group.position.x, small ? 1.9 : 1.5, zone.group.position.z);
 
   const d = zone.def;
   elEyebrow.textContent = d.eyebrow || "";
@@ -1051,14 +1442,14 @@ document.addEventListener("keydown", function (e) {
 
 function touched() { document.body.classList.add("touched"); }
 
-/* ===========================================================================
+/* =============================================================================
    Visitor count
-=========================================================================== */
+============================================================================= */
 
 const API = "https://api.counterapi.dev/v2/alexander-parkers-team-4716/first-counter-4716";
 const LOCAL_KEY = "ap_count_local";
 const counterEl = document.getElementById("counter");
-if (counterEl && JAR && JAR.caption) counterEl.title = JAR.caption;
+if (counterEl && JAR_ZONE.lede) counterEl.title = "One grain for every visit";
 
 function pickNumber(list) {
   for (const v of list) if (typeof v === "number" && isFinite(v)) return v;
@@ -1095,8 +1486,8 @@ function fetchCount() {
     });
 }
 
-// A jar that filled linearly would be full forever after a few thousand
-// visits, so the level is logarithmic: always rising, never quite full.
+// A jar that filled linearly would be full forever after a few thousand visits,
+// so the level is logarithmic: always rising, never quite full.
 function fillFor(count) {
   return clamp(0.09 + Math.log10(count + 1) / 5.4, 0.09, 0.94);
 }
@@ -1114,15 +1505,16 @@ function startPour(count) {
 function setCounter(v) { counterEl.textContent = Math.round(v).toLocaleString(); }
 
 function dropGrain() {
+  if (!grain) return;
   grain.visible = true;
   grain.position.set(0, 4.1, 0);
   grainT = 0;
   grainFall = true;
 }
 
-/* ===========================================================================
+/* =============================================================================
    Resize and loop
-=========================================================================== */
+============================================================================= */
 
 function resize() {
   cssW = Math.max(1, window.innerWidth);
@@ -1158,40 +1550,13 @@ function resize() {
 window.addEventListener("resize", resize);
 window.addEventListener("orientationchange", resize);
 
-const _v = new THREE.Vector3();
-const _vc = new THREE.Vector3();
-
-/* Labels are projected from each scene, then pushed outward in screen space
-   away from the middle of the room and clamped inside the viewport. Doing the
-   offset on screen rather than in the world keeps them off the props at every
-   orbit angle, and keeps them on screen at every aspect ratio. */
-function positionLabels() {
-  _vc.set(0, 1.6, 0).project(camera);
-  const cx = (_vc.x * 0.5 + 0.5) * cssW;
-  const cy = (-_vc.y * 0.5 + 0.5) * cssH;
-  const push = 46;
-  const m = 56;
-
-  for (const zone of zones) {
-    if (!zone.label) continue;
-    _v.copy(zone.anchor).project(camera);
-    let x = (_v.x * 0.5 + 0.5) * cssW;
-    let y = (-_v.y * 0.5 + 0.5) * cssH;
-    const dx = x - cx, dy = y - cy;
-    const len = Math.hypot(dx, dy) || 1;
-    x = clamp(x + (dx / len) * push, m, cssW - m);
-    y = clamp(y + (dy / len) * push, m + 30, cssH - m);
-    zone.label.style.transform =
-      "translate(-50%, -50%) translate(" + x.toFixed(1) + "px," + y.toFixed(1) + "px)";
-  }
-}
-
 let last = performance.now();
 
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
+  const t = now / 1000;
 
   const k = 1 - Math.pow(0.0016, dt);
   cam.az += (want.az - cam.az) * k;
@@ -1204,38 +1569,33 @@ function frame(now) {
   cam.target.lerp(want.target, k);
   applyCamera();
 
-  // The chest opens when its scene is the one being read.
-  if (chestPivot) {
-    const open = !!activeZone && activeZone.def.id === "projects";
-    const ease = 1 - Math.pow(0.004, dt);
-    chestPivot.rotation.x += ((open ? -1.85 : 0) - chestPivot.rotation.x) * ease;
+  const ease = 1 - Math.pow(0.006, dt);
+  for (const zone of zones) {
+    const selected = activeZone === zone;
+    zone.amt += ((selected ? 1 : 0) - zone.amt) * ease;
 
-    if (toys) {
-      const slow = 1 - Math.pow(0.006, dt);
-      for (const t of toys.children) {
-        const home = t.userData.home;
-        const wobble = Math.sin(now * 0.0018 + t.userData.phase) * 0.05;
-        t.position.x += ((open ? home.x : 0) - t.position.x) * slow;
-        t.position.z += ((open ? home.z : -0.4) - t.position.z) * slow;
-        t.position.y += ((open ? 0.5 + wobble : -0.34) - t.position.y) * slow;
-        t.rotation.y += dt * t.userData.spin * (open ? 1 : 0.15);
-        t.visible = t.position.y > -0.3;
-      }
+    // Hover floats an island, which is the only cue that it can be selected.
+    const liftTo = (!activeZone && hovered === zone) ? 0.34 : (selected ? 0.2 : 0);
+    zone.lift += (liftTo - zone.lift) * ease;
+    zone.group.position.y = zone.lift;
+
+    if (zone.amt > 0.002 || selected) {
+      for (const u of zone.updaters) u(t, dt, zone.amt);
     }
   }
 
   // The pour: the jar fills while the tally climbs, then one last grain drops.
-  if (pouring) {
-    const t = (now - pourStart) / 1800;
-    const e = t >= 1 ? 1 : 1 - Math.pow(1 - t, 3);
-    const fill = fillTarget * JAR_H * e;
+  if (pouring && sandCol) {
+    const p = (now - pourStart) / 1800;
+    const e = p >= 1 ? 1 : 1 - Math.pow(1 - p, 3);
+    const fillH = fillTarget * JAR_H * e;
     setCounter(total * e);
-    sandCol.scale.y = Math.max(0.0001, fill);
-    sandCol.position.y = JAR_Y + fill / 2;
-    if (t >= 1) { pouring = false; setCounter(total); dropGrain(); }
+    sandCol.scale.y = Math.max(0.0001, fillH);
+    sandCol.position.y = JAR_Y + fillH / 2;
+    if (p >= 1) { pouring = false; setCounter(total); dropGrain(); }
   }
 
-  if (grainFall) {
+  if (grainFall && grain) {
     grainT += dt;
     const landY = JAR_Y + fillTarget * JAR_H + 0.06;
     const y = 4.1 - 9.0 * grainT * grainT;
@@ -1249,11 +1609,10 @@ function frame(now) {
     }
   }
 
-  positionLabels();
   renderer.render(scene, camera);
 }
 
-/* ---- Go ------------------------------------------------------------------------ */
+/* ---- Go ---------------------------------------------------------------------- */
 
 resize();
 requestAnimationFrame(frame);

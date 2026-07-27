@@ -1,10 +1,14 @@
 /* =============================================================================
    content.js — every word on the site lives here.
 
-   Edit this file freely; nothing in world.js needs to change. Each zone maps to
-   one scene in the 3D room. Delete the `todo` line from a zone once you have
-   replaced its placeholder copy — that dashed box only exists to stop
-   placeholder text quietly shipping as if it were real.
+   Edit this file freely; nothing in world.js needs to change. Each entry in
+   ZONES is one floating island, and the ARRAY ORDER is the order they sit in
+   the ring, starting at the front and going clockwise. Move an entry up or down
+   and its island moves with it. Add a seventh and the ring re-spaces itself.
+
+   Delete the `todo` line from a section once you have replaced its placeholder
+   copy — that dashed box only exists to stop placeholder text quietly shipping
+   as if it were real.
 ============================================================================= */
 
 export const ZONES = [
@@ -46,6 +50,41 @@ export const ZONES = [
   },
 
   {
+    id: "bjj",
+    label: "Jiu-jitsu",
+    eyebrow: "Training",
+    title: "The mats",
+    lede: "Taekwondo as a kid, Brazilian jiu-jitsu as an adult. Twenty-odd years apart and not much alike.",
+    text: [
+      "Taekwondo taught distance and timing at an age when neither meant anything yet. Jiu-jitsu took the same problem and moved it to the ground, where being wrong is immediate and unarguable.",
+      "It is the one thing on this page with no deliverable. You turn up, you get better slowly, and the only record is that the same people keep catching you in the same places until they don't."
+    ],
+    items: [
+      { name: "Brazilian jiu-jitsu", tag: "Current", note: "Training on the mats now." },
+      { name: "Taekwondo", tag: "As a kid", note: "Where it started." }
+    ],
+    todo: "Placeholder. Add your belt, your gym, how long you have trained — I have deliberately not invented any of it. Delete this line once you have."
+  },
+
+  {
+    id: "music",
+    label: "Music",
+    eyebrow: "Studio",
+    title: "Decks and records",
+    lede: "DJing, and music made for the sake of making it.",
+    text: [
+      "The studio is the corner of this room with the least justification and the most hours in it. Nothing here needed to exist, which is the point.",
+      "Mixes, edits, and tracks that mostly never left the drive."
+    ],
+    items: [
+      { name: "Track or set one", tag: "Year", note: "One line on what it is, and a link if there is one." },
+      { name: "Track or set two", tag: "Year", note: "One line on what it is, and a link if there is one." },
+      { name: "Track or set three", tag: "Year", note: "One line on what it is, and a link if there is one." }
+    ],
+    todo: "Placeholder. Drop in the real tracks, sets or mixes — item names and notes both. Delete this line when you do."
+  },
+
+  {
     id: "projects",
     label: "Projects",
     eyebrow: "Archive",
@@ -81,8 +120,19 @@ export const ZONES = [
   }
 ];
 
-/* The jar on the centre pedestal. One grain of sand per visit — the original
-   idea this site started from, kept literally. */
-export const JAR = {
-  caption: "One grain for every visit"
+/* The jar on the centre island. One grain of sand per visit — the original idea
+   this site started from, kept literally. It is a selectable section like any
+   other; `keepAz` stops the camera swinging round, since a jar in the middle of
+   the room has no front to face. */
+export const JAR_ZONE = {
+  id: "jar",
+  label: "The jar",
+  eyebrow: "Visitors",
+  title: "One grain per visit",
+  lede: "The site began as a single grain of sand falling. This is what is left of that idea.",
+  text: [
+    "Every time someone opens this page a counter ticks over and one more grain lands in the jar. The number in the header is that count.",
+    "The level is logarithmic rather than linear, so it always rises and never quite fills. A jar that filled honestly would have been full for good after a few thousand visits, which is a worse thing to look at."
+  ],
+  keepAz: true
 };
