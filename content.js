@@ -79,10 +79,12 @@ export const BOARD = {
 };
 
 /* The screen on the investing desk. Tap it and it fills the view while the
-   equity curve draws itself out, drawdown and all. Keep `lines` to two. */
+   equity curve draws itself out, drawdown and all. The curve is the point, so
+   there is nothing under it — add a line or two to `lines` only if you really
+   want words there. */
 export const SCREEN = {
   title: "PORTFOLIO",
-  lines: ["EVERY LINE HAS", "A DRAWDOWN IN IT"]
+  lines: []
 };
 
 /* The laptop open on the DJ booth. Tap it to read the screen, tap it again and
