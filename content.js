@@ -72,12 +72,11 @@ export const ZONES = [
     title: "The toy chest",
     lede: "Side builds. Open it and things fall out.",
     items: [
-      { name: "This site", tag: "2026" },
-      { name: "Project two", tag: "Year" },
-      { name: "Project three", tag: "Year" },
-      { name: "Project four", tag: "Year" }
+      { name: "AFLmarket.com", tag: "Site", href: "https://aflmarket.com" },
+      { name: "headsortailshero.com", tag: "Site", href: "https://headsortailshero.com" },
+      { name: "Scentcloud", tag: "Unfinished" }
     ],
-    todo: "Open the chest and tap any object in it. What is in there, and what each one says, is the CHEST list at the bottom of this file \u2014 all placeholder for now."
+    todo: "Open the chest and tap an object to read about that project. The two live ones still need a line each saying what they are \u2014 see CHEST at the bottom of this file."
   },
 
   {
@@ -116,31 +115,28 @@ export const BOARD = {
   }
 };
 
-/* What is in the toy chest, in order. Each one turns and bobs while the chest
-   is open, and can be tapped on its own to read what it is.
+/* What is in the toy chest, in order — one object per project. Each one turns
+   and bobs while the chest is open, and can be tapped on its own.
 
    Known shapes: coin, football (AFL), perfume, rocket, cube, ball, controller,
    brush. Add a case to makeToy in world.js for anything else. */
 export const CHEST = [
   {
-    shape: "coin",
-    title: "The coin",
-    text: "Placeholder. Say what this one is here."
+    shape: "football",
+    title: "AFLmarket.com",
+    text: "Placeholder. One line on what it is.",
+    href: "https://aflmarket.com"
   },
   {
-    shape: "football",
-    title: "The Sherrin",
-    text: "Placeholder. Say what this one is here."
+    shape: "coin",
+    title: "headsortailshero.com",
+    text: "Placeholder. One line on what it is.",
+    href: "https://headsortailshero.com"
   },
   {
     shape: "perfume",
-    title: "The bottle",
-    text: "Placeholder. Say what this one is here."
-  },
-  {
-    shape: "cube",
-    title: "Not decided",
-    text: "A fourth object was going to go here. Change its shape and words in CHEST."
+    title: "Scentcloud",
+    text: "An app. Not finished yet."
   }
 ];
 

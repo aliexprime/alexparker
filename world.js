@@ -961,11 +961,6 @@ function buildProjects(b, g) {
     b.box(sx, F + 0.14, -0.96, 0.14, 0.78, 0.05, C.brass);
   }
 
-  b.box(-1.85, F + 0.09, 1.15, 0.34, 0.34, 0.34, C.toyBlue, 0.4);
-  b.box(-1.5, F + 0.09, 1.5, 0.26, 0.26, 0.26, C.toyYellow, -0.2);
-  b.rock(1.7, F + 0.32, 1.2, 0.24, C.toyRed);
-  b.box(1.35, F + 0.09, 1.7, 0.5, 0.1, 0.34, C.toyGreen, 0.6);
-
   shelf(b, -2.95, -0.6, 2.4, 1.55, Math.PI / 2, 55);
   crate(b, 2.85, F, -1.5, 0.7, 0.25);
   crate(b, 2.75, F + 0.7, -1.45, 0.52, -0.15);
@@ -1074,7 +1069,9 @@ function animProjects(group, def, zone) {
         eyebrow: "In the chest",
         title: entry.title || shape,
         lede: entry.text || "",
-        items: null,
+        items: entry.href
+          ? [{ name: entry.href.replace(/^https?:\/\//, ""), tag: "Visit", href: entry.href }]
+          : null,
         todo: null
       });
     }
@@ -1774,7 +1771,16 @@ function fillPanel(d) {
     row.className = "item";
     const name = document.createElement("div");
     name.className = "item-name";
-    name.textContent = item.name;
+    if (item.href) {
+      const a = document.createElement("a");
+      a.href = item.href;
+      a.textContent = item.name;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      name.appendChild(a);
+    } else {
+      name.textContent = item.name;
+    }
     row.appendChild(name);
     if (item.tag) {
       const tag = document.createElement("div");
