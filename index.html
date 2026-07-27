@@ -2,65 +2,67 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Alex Parker</title>
   <meta name="description" content="Alex Parker">
+  <meta name="theme-color" content="#f7f6f3">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23f7f6f3'/%3E%3Crect x='5' y='4' width='6' height='8' fill='%23cadde4'/%3E%3Crect x='6' y='8' width='4' height='4' fill='%23d7ae66'/%3E%3C/svg%3E">
   <style>
     :root {
       --bg: #f7f6f3;
       --text: #171717;
       --muted: rgba(23, 23, 23, 0.45);
       --muted-2: rgba(23, 23, 23, 0.25);
-      --line-base: rgba(0, 0, 0, 0.05);
+      --hair: rgba(0, 0, 0, 0.09);
+      --sheet: #fbfaf8;
     }
 
     * { box-sizing: border-box; }
 
     html, body {
       margin: 0;
-      min-height: 100%;
+      height: 100%;
       background: var(--bg);
       color: var(--text);
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       -webkit-font-smoothing: antialiased;
-      text-rendering: geometricPrecision;
       overflow: hidden;
+      overscroll-behavior: none;
+      -webkit-tap-highlight-color: transparent;
     }
 
-    body {
-      min-height: 100vh;
-    }
+    /* ---- The world ------------------------------------------------------ */
 
-    .page {
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      max-width: 1400px;
-      margin: 0 auto;
-      padding: 24px 20px 32px;
-      position: relative;
-    }
-
-    .header {
+    canvas#stage {
       position: fixed;
-      inset: 0 0 auto 0;
-      z-index: 10;
-      pointer-events: none;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      z-index: 0;
+      touch-action: none;
+      /* The scene renders small and is scaled up here — this is what makes
+         real 3D read as pixel art. */
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      cursor: grab;
+      opacity: 0;
+      transition: opacity 900ms ease;
     }
+    body.loaded canvas#stage { opacity: 1; }
+    body.dragging canvas#stage { cursor: grabbing; }
+    body.overzone canvas#stage { cursor: pointer; }
 
-    .header-inner {
-      max-width: 1400px;
-      margin: 0 auto;
-      padding: 24px 20px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      pointer-events: none;
-    }
+    /* ---- Type ----------------------------------------------------------- */
 
+    .mono,
     .brand,
     .contact,
-    .footer-label {
+    .visitor,
+    .hint,
+    .eyebrow,
+    .sheet-close,
+    .item-tag {
       font-size: 10px;
       line-height: 1;
       letter-spacing: 0.28em;
@@ -69,373 +71,224 @@
       white-space: nowrap;
     }
 
-    .brand { color: var(--muted); }
+    /* ---- Header --------------------------------------------------------- */
+
+    .header {
+      position: fixed;
+      inset: 0 0 auto 0;
+      z-index: 20;
+      pointer-events: none;
+      padding: calc(24px + env(safe-area-inset-top)) 20px 0;
+    }
+    .header-inner {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand { color: var(--muted); justify-self: start; }
+    .visitor {
+      justify-self: center;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
     .contact {
+      justify-self: end;
       color: var(--muted-2);
       pointer-events: auto;
       transition: color 180ms ease;
     }
     .contact:hover { color: var(--text); }
 
-    .visitor {
+    /* ---- Hint ----------------------------------------------------------- */
+
+    .hint {
       position: fixed;
-      top: 24px;
-      left: 0;
-      right: 0;
-      z-index: 11;
-      text-align: center;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: calc(26px + env(safe-area-inset-bottom));
+      z-index: 20;
+      color: var(--muted-2);
       pointer-events: none;
-      font-size: 10px;
-      line-height: 1;
-      letter-spacing: 0.28em;
-      color: var(--muted);
-      font-variant-numeric: tabular-nums;
+      opacity: 0;
+      transition: opacity 700ms ease;
+      text-shadow: 0 0 5px var(--bg), 0 0 10px var(--bg), 0 0 16px var(--bg);
     }
+    body.loaded .hint { opacity: 1; }
+    body.touched .hint, body.form-open .hint { opacity: 0; }
 
-    .hero {
-      flex: 1;
+    /* ---- The message form ------------------------------------------------
+
+       The only HTML the site has left. Everything else a visitor reads is
+       printed into the world in the pixel font — you just cannot type into a
+       mesh, so this one thing is a dialog. */
+
+    .dialog {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
       display: flex;
       align-items: center;
       justify-content: center;
-      position: relative;
-      min-height: 0;
+      padding: 24px;
+      background: rgba(247, 246, 243, 0.72);
+      backdrop-filter: blur(3px);
+      -webkit-backdrop-filter: blur(3px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 220ms ease;
     }
+    body.form-open .dialog { opacity: 1; pointer-events: auto; }
 
-    .viz-wrap {
-      width: min(100%, 1100px);
-      height: clamp(180px, 36vw, 420px);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      position: relative;
+    .sheet {
+      width: min(460px, 100%);
+      max-height: 100%;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      background: var(--sheet);
+      border: 2px solid var(--text);
+      /* A hard offset instead of a soft shadow — the whole site is square. */
+      box-shadow: 8px 8px 0 rgba(23, 23, 23, 0.16);
+      padding: 26px 26px calc(26px + env(safe-area-inset-bottom));
+      transform: translateY(10px) scale(0.98);
+      transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
     }
+    body.form-open .sheet { transform: none; }
 
-    canvas.sand {
-      width: 100%;
-      height: 100%;
-      display: block;
-      image-rendering: pixelated;
-      image-rendering: crisp-edges;
-    }
-
-    .footer {
-      position: relative;
-      z-index: 2;
-      border-top: 1px solid rgba(0, 0, 0, 0.08);
-      padding-top: 24px;
+    .sheet-head {
       display: flex;
       justify-content: space-between;
-      align-items: center;
+      align-items: flex-start;
       gap: 16px;
     }
+    .sheet-close {
+      appearance: none;
+      -webkit-appearance: none;
+      background: none;
+      border: 0;
+      padding: 2px 0 2px 12px;
+      cursor: pointer;
+      color: var(--muted);
+      font-family: inherit;
+      transition: color 180ms ease;
+    }
+    .sheet-close:hover { color: var(--text); }
 
-    .footer-label {
-      color: var(--muted-2);
-      user-select: none;
+    .sheet-title {
+      font-size: 24px;
+      line-height: 1.15;
+      letter-spacing: -0.02em;
+      font-weight: 500;
+      margin: 14px 0 0;
     }
 
-    @media (min-width: 768px) {
-      .page { padding: 36px 48px 48px; }
-      .header-inner { padding: 32px 48px; }
-      .brand, .contact, .footer-label { font-size: 11px; letter-spacing: 0.32em; }
-      .visitor { top: 32px; font-size: 11px; letter-spacing: 0.32em; }
-      .footer { padding-top: 32px; }
+    /* ---- Pixel-art form -------------------------------------------------- */
+
+    .field { display: block; margin: 20px 0 0; }
+    .field span {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 10px;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .px-input {
+      display: block;
+      width: 100%;
+      font-family: inherit;
+      font-size: 14px;
+      color: var(--text);
+      background: #fff;
+      border: 2px solid rgba(23, 23, 23, 0.3);
+      border-radius: 0;
+      padding: 11px 12px;
+      /* A hard offset instead of a soft shadow — the whole site is square. */
+      box-shadow: 3px 3px 0 rgba(23, 23, 23, 0.09);
+      transition: border-color 140ms ease, box-shadow 140ms ease;
+    }
+    .px-input:focus {
+      outline: none;
+      border-color: var(--text);
+      box-shadow: 3px 3px 0 rgba(23, 23, 23, 0.22);
+    }
+    textarea.px-input { resize: vertical; min-height: 96px; }
+
+    .px-btn {
+      margin-top: 26px;
+      appearance: none;
+      -webkit-appearance: none;
+      font-family: inherit;
+      font-size: 11px;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      color: var(--text);
+      background: var(--bg);
+      border: 2px solid var(--text);
+      border-radius: 0;
+      padding: 13px 26px;
+      cursor: pointer;
+      box-shadow: 4px 4px 0 var(--text);
+      transition: transform 90ms ease, box-shadow 90ms ease;
+    }
+    .px-btn:hover { transform: translate(1px, 1px); box-shadow: 3px 3px 0 var(--text); }
+    .px-btn:active { transform: translate(4px, 4px); box-shadow: 0 0 0 var(--text); }
+
+    .field-note {
+      margin: 14px 0 0;
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--muted);
+    }
+    .field-note.bad { color: #a33f2f; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .dialog, .sheet, canvas#stage, .hint { transition-duration: 1ms; }
     }
   </style>
 </head>
 <body>
+  <canvas id="stage" aria-label="An interactive pixel-art world. Every section of it is a part of Alex Parker's work, and everything it says is written into the world itself: tap a section to move in close, and tap a sign, a board, a screen or an object to read it."></canvas>
+
   <header class="header">
     <div class="header-inner">
       <div class="brand">Alex Parker</div>
+      <div class="visitor" id="counter" aria-label="Visitor count">0</div>
       <a class="contact" href="mailto:hello@alexparker.au">Contact</a>
     </div>
   </header>
 
-  <div class="visitor" id="counter" aria-label="Visitor count">0</div>
+  <div class="hint" id="hint">Drag to orbit &middot; Scroll to zoom in close</div>
 
-  <main class="page">
-    <section class="hero" aria-label="Landing page visual">
-      <div class="viz-wrap">
-        <canvas
-          id="sand"
-          class="sand"
-          role="img"
-          aria-label="A pile of pixel sand, one grain for every visitor to the site"
-        ></canvas>
+  <!-- Opened by tapping one of the four lines on the chart in the ward. -->
+  <div class="dialog" id="formDialog" role="dialog" aria-modal="true" aria-labelledby="formTitle">
+    <div class="sheet">
+      <div class="sheet-head">
+        <div class="eyebrow">RLDatix</div>
+        <button class="sheet-close" id="formClose" type="button">Close</button>
       </div>
-    </section>
+      <h1 class="sheet-title" id="formTitle"></h1>
+      <form id="contactForm" novalidate>
+        <label class="field">
+          <span>Name</span>
+          <input class="px-input" id="fName" name="name" autocomplete="name" required>
+        </label>
+        <label class="field">
+          <span>Email</span>
+          <input class="px-input" id="fEmail" name="email" type="email" autocomplete="email" required>
+        </label>
+        <label class="field">
+          <span>Message</span>
+          <textarea class="px-input" id="fMsg" name="message" rows="5" required></textarea>
+        </label>
+        <button class="px-btn" type="submit">Send</button>
+        <p class="field-note" id="formNote">Opens your email app with this filled in.</p>
+      </form>
+    </div>
+  </div>
 
-    <footer class="footer">
-      <div class="footer-label">Research</div>
-      <div class="footer-label">Archive</div>
-    </footer>
-  </main>
-
-  <script>
-    (function () {
-      "use strict";
-
-      // ---- Visitor counter (counterapi.dev v2, public / keyless) --------------
-      // One grain is added to the pile for every visit to the site. The global
-      // total is stored in a single hosted counter; the pile you see IS that
-      // number rendered as sand.
-      var API = "https://api.counterapi.dev/v2/alexander-parkers-team-4716/first-counter-4716";
-      var LOCAL_KEY = "ap_count_local";   // offline fallback / last-known value
-
-      function fetchCount() {
-        // Every page load (including a refresh) increments the counter, so the
-        // pile grows by one grain on each visit.
-        var ctrl = new AbortController();
-        var timer = setTimeout(function () { ctrl.abort(); }, 4500);
-
-        return fetch(API + "/up", { signal: ctrl.signal, cache: "no-store" })
-          .then(function (r) {
-            clearTimeout(timer);
-            if (!r.ok) throw new Error("bad status " + r.status);
-            return r.json();
-          })
-          .then(function (j) {
-            var d = (j && j.data) ? j.data : {};
-            var n = pickNumber([d.up_count, d.value, d.count, j && j.count, j && j.value]);
-            if (n === null) throw new Error("no count in response");
-            n = Math.max(1, Math.floor(n));
-            localStorage.setItem(LOCAL_KEY, String(n));
-            return n;
-          })
-          .catch(function () {
-            // Network/API unavailable: fall back to a per-browser tally so the
-            // pile still grows and the page never looks broken.
-            var n = parseInt(localStorage.getItem(LOCAL_KEY) || "0", 10);
-            if (!isFinite(n) || n < 0) n = 0;
-            n += 1;
-            localStorage.setItem(LOCAL_KEY, String(n));
-            return Math.max(1, n);
-          });
-      }
-
-      function pickNumber(list) {
-        for (var i = 0; i < list.length; i++) {
-          var v = list[i];
-          if (typeof v === "number" && isFinite(v)) return v;
-        }
-        return null;
-      }
-
-      // ---- Falling-sand cellular automaton ------------------------------------
-      var canvas = document.getElementById("sand");
-      if (!canvas) return;
-      var ctx = canvas.getContext("2d");
-      var wrap = canvas.parentNode;
-
-      var BG = "#f7f6f3";
-      // A few near-black ink tones give the sand a subtle pixel texture while
-      // staying within the site's monochrome palette.
-      var SHADES = ["#1a1a1a", "#262625", "#33322f", "#201f1d"];
-      var CELL = 3;            // size of one sand grain in CSS pixels
-      var STREAM_MAX = 380;    // grains poured as a visible stream (rest are instant)
-      var BUILD_FRAMES = 140;  // ~2.3s pour at 60fps
-
-      var cols = 0, rows = 0, grid = null, sourceX = 0;
-      var cssW = 0, cssH = 0;
-      var reduceMotion = window.matchMedia &&
-        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-      var live = [];           // grains currently falling through the air
-      var toEmit = 0;          // remaining stream grains to spawn
-      var heroPending = false; // the single grain that represents THIS visitor
-      var rafId = 0;
-      var lastTotal = 1;
-      var landed = 0;          // animated grains that have come to rest this pour
-
-      var counterEl = document.getElementById("counter");
-      function setCounter(n) {
-        if (counterEl) counterEl.textContent = Math.round(n).toLocaleString();
-      }
-
-      function idx(x, y) { return y * cols + x; }
-      function inX(x) { return x >= 0 && x < cols; }
-      function empty(x, y) { return y < rows && grid[idx(x, y)] === 0; }
-      function shade() { return 1 + (Math.random() * SHADES.length | 0); }
-
-      function initCanvas() {
-        var rect = wrap.getBoundingClientRect();
-        cssW = Math.max(1, Math.floor(rect.width));
-        cssH = Math.max(1, Math.floor(rect.height));
-        var dpr = Math.min(window.devicePixelRatio || 1, 2);
-
-        canvas.width = Math.floor(cssW * dpr);
-        canvas.height = Math.floor(cssH * dpr);
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ctx.imageSmoothingEnabled = false;
-
-        cols = Math.max(1, Math.floor(cssW / CELL));
-        rows = Math.max(1, Math.floor(cssH / CELL));
-        grid = new Uint8Array(cols * rows);
-        sourceX = Math.floor(cols / 2);
-      }
-
-      // One physics step for a grain: straight down, else tumble down-diagonally.
-      // Returns the next cell to occupy, or null when the grain has come to rest.
-      function nextCell(px, py) {
-        var ny = py + 1;
-        if (ny > rows - 1) return null;            // resting on the floor
-        if (grid[idx(px, ny)] === 0) return { x: px, y: ny };
-        var d = Math.random() < 0.5 ? -1 : 1;      // random slide direction
-        if (inX(px + d) && grid[idx(px + d, ny)] === 0) return { x: px + d, y: ny };
-        if (inX(px - d) && grid[idx(px - d, ny)] === 0) return { x: px - d, y: ny };
-        return null;                               // wedged: settle here
-      }
-
-      // Drop a grain and settle it immediately (used to build the pile's base).
-      function dropInstant() {
-        var px = sourceX + ((Math.random() * 5 | 0) - 2);
-        if (px < 0) px = 0; else if (px >= cols) px = cols - 1;
-        var py = 0;
-        if (grid[idx(px, py)] !== 0) return false; // pile has reached the top
-        for (;;) {
-          var n = nextCell(px, py);
-          if (!n) { grid[idx(px, py)] = shade(); return true; }
-          px = n.x; py = n.y;
-        }
-      }
-
-      function liveAt(x, y) {
-        for (var i = 0; i < live.length; i++) {
-          if (live[i].x === x && live[i].y === y) return true;
-        }
-        return false;
-      }
-
-      function spawnFalling(hero) {
-        // Give the hero grain a head start down the canvas so it lands promptly
-        // after the stream instead of trailing far behind.
-        var startY = hero ? Math.floor(rows * 0.45) : 0;
-        // Find a free starting cell in the source band so no two grains share a
-        // cell; if the band is momentarily full, place the grain exactly instead
-        // of animating it, so the pile total always equals the visitor count.
-        for (var t = 0; t < 6; t++) {
-          var px = sourceX + ((Math.random() * 5 | 0) - 2);
-          if (px < 0) px = 0; else if (px >= cols) px = cols - 1;
-          if (grid[idx(px, startY)] === 0 && !liveAt(px, startY)) {
-            live.push({ x: px, y: startY, c: shade(), steps: 2 });
-            return;
-          }
-        }
-        if (dropInstant()) landed++; // band was full: place it exactly, still counts
-      }
-
-      // Advance every airborne grain. A grain settles only when real sand (the
-      // grid) blocks it; if another airborne grain is in the way it simply waits,
-      // so grains never overlap or pass through each other and none are lost.
-      function updateLive() {
-        live.sort(function (a, b) { return b.y - a.y; }); // lower grains move first
-        var claimed = Object.create(null); // cells held by grains still airborne
-        var next = [];
-        for (var i = 0; i < live.length; i++) {
-          var p = live[i];
-          var settled = false;
-          for (var s = 0; s < p.steps; s++) {
-            var n = nextCell(p.x, p.y);
-            if (!n) { grid[idx(p.x, p.y)] = p.c; landed++; settled = true; break; }
-            if (claimed[idx(n.x, n.y)]) break; // blocked by another grain: wait
-            p.x = n.x; p.y = n.y;
-          }
-          if (!settled) { claimed[idx(p.x, p.y)] = 1; next.push(p); }
-        }
-        live = next;
-      }
-
-      function render() {
-        ctx.fillStyle = BG;
-        ctx.fillRect(0, 0, cssW, cssH);
-        var v, x, y, i = 0;
-        for (y = 0; y < rows; y++) {
-          for (x = 0; x < cols; x++, i++) {
-            v = grid[i];
-            if (v !== 0) {
-              ctx.fillStyle = SHADES[v - 1];
-              ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
-            }
-          }
-        }
-        for (i = 0; i < live.length; i++) {
-          var p = live[i];
-          ctx.fillStyle = SHADES[p.c - 1];
-          ctx.fillRect(p.x * CELL, p.y * CELL, CELL, CELL);
-        }
-      }
-
-      function build(total, animate) {
-        lastTotal = total;
-        landed = 0;
-        if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
-        live = [];
-
-        // Cap the pile at what the grid can physically hold, so a very large
-        // visitor count stays cheap to render (the pile just reads as "full").
-        var cap = Math.floor(cols * rows * 0.48);
-        var n = Math.min(Math.max(1, total), cap);
-        var pre = Math.max(0, n - 1);              // grains from earlier visitors
-        var streamN = animate ? Math.min(pre, STREAM_MAX) : pre;
-        var bulk = pre - streamN;                  // placed instantly (the base)
-
-        for (var i = 0; i < bulk; i++) dropInstant();
-
-        if (!animate) {
-          for (var j = 0; j < streamN; j++) dropInstant();
-          dropInstant();                           // this visitor's grain
-          render();
-          setCounter(total);
-          return;
-        }
-
-        toEmit = streamN;
-        heroPending = true;
-        var emitPerFrame = Math.max(1, Math.ceil(streamN / BUILD_FRAMES));
-        // The tally climbs 0 -> total in step with the grains that actually
-        // land, so it finishes at the exact moment the last grain settles:
-        // however long the pour takes is how long the number tweens.
-        var landTarget = streamN + 1;
-        setCounter(0);
-
-        function frame() {
-          var e = emitPerFrame;
-          while (e-- > 0 && toEmit > 0) { spawnFalling(false); toEmit--; }
-          if (toEmit === 0 && live.length === 0 && heroPending) {
-            spawnFalling(true);                    // the hero grain drops last
-            heroPending = false;
-          }
-          updateLive();
-          render();
-          if (toEmit > 0 || live.length > 0 || heroPending) {
-            setCounter(total * Math.min(1, landed / landTarget));
-            rafId = requestAnimationFrame(frame);
-          } else {
-            rafId = 0;
-            render();
-            setCounter(total);                     // snap to the exact total
-          }
-        }
-        rafId = requestAnimationFrame(frame);
-      }
-
-      // Rebuild to fit the new size; no pour animation on resize.
-      var resizeTimer = 0;
-      window.addEventListener("resize", function () {
-        clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(function () {
-          initCanvas();
-          build(lastTotal, false);
-        }, 200);
-      });
-
-      // ---- Go ------------------------------------------------------------------
-      initCanvas();
-      render(); // paint the empty background immediately while the count loads
-      fetchCount().then(function (total) {
-        build(total, !reduceMotion);
-      });
-    })();
-  </script>
+  <script type="module" src="./world.js"></script>
 </body>
 </html>

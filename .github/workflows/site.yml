@@ -1,0 +1,40 @@
+# Proves the site still works as a bag of static files, which is all GitHub
+# Pages ever serves it as. No build step, no bundler, nothing generated — the
+# repository root IS the site, so this serves that root over plain HTTP and
+# drives the real page in a real browser.
+#
+# Playwright is installed into the runner's workspace rather than added to the
+# repository, so the site itself stays dependency-free.
+
+name: Site
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Check the source parses
+        run: |
+          for f in world.js content.js ci/check.js; do
+            node --check "$f"
+          done
+
+      - name: Install a browser
+        run: |
+          npm init -y > /dev/null
+          npm install --no-audit --no-fund playwright@1.49.1
+          npx playwright install --with-deps chromium
+
+      - name: Serve it the way Pages does, and use it
+        run: node ci/check.js
