@@ -75,6 +75,8 @@ const C = {
   ledCyan:   0x7fd6d0,
   ledAmber:  0xe8b95c,
 
+  leather:   0xa8402c,
+  leatherDark: 0x7d2c1e,
   perfume:   0xd7b0c0,
   rug:       0xd0b995,
   chest:     0x9c6a3f,
@@ -157,6 +159,13 @@ class Builder {
   /** Faceted blob — plants, balls, anything that should not look smooth. */
   rock(x, y, z, r, color, detail) {
     return this._add(new THREE.IcosahedronGeometry(r, detail || 0), color, x, y, z, 0, 0, 0);
+  }
+
+  /** The same, stretched — for things that are oval rather than round. */
+  rockS(x, y, z, r, color, detail, sx, sy, sz, rx, ry, rz) {
+    const g = new THREE.IcosahedronGeometry(r, detail || 0);
+    g.scale(sx, sy, sz);
+    return this._add(g, color, x, y, z, rx, ry, rz);
   }
 
   get empty() { return this.p.length === 0; }
@@ -981,13 +990,20 @@ function makeToy(kind, i) {
       b.boxC(0, 0.05, 0.062, 0.15, 0.06, 0.02, 0xa8853c);
       break;
 
-    case "football":
-      b.rock(0, 0, 0, 0.27, C.paper, 1);
-      for (const [dx, dy, dz] of [[0, 1, 0], [0, -1, 0], [0.9, 0.3, 0.3],
-                                  [-0.9, 0.3, -0.3], [0.3, -0.3, 0.9], [-0.3, -0.3, -0.9]]) {
-        b.rock(dx * 0.22, dy * 0.22, dz * 0.22, 0.095, 0x33302c, 0);
+    case "football": {
+      // AFL ball: an oval leaning on its side, with the seam and the lacing.
+      const tilt = 1.28;
+      b.rockS(0, 0, 0, 0.25, C.leather, 1, 0.72, 1.32, 0.72, 0, 0, tilt);
+      const seam = new THREE.TorusGeometry(0.248, 0.019, 4, 18);
+      seam.scale(0.74, 1.34, 1);
+      b._add(seam, C.leatherDark, 0, 0, 0, 0, 0, tilt);
+      for (let k = 0; k < 4; k++) {
+        const ly = 0.105 - k * 0.066;
+        b.boxC(-Math.sin(tilt) * ly, Math.cos(tilt) * ly, 0.2,
+               0.065, 0.022, 0.03, C.paper, 0, 0, tilt);
       }
       break;
+    }
 
     case "perfume":
       b.box(0, -0.28, 0, 0.28, 0.32, 0.17, C.perfume);

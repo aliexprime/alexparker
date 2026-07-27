@@ -116,8 +116,8 @@ export const BOARD = {
   }
 };
 
-/* What is in the toy chest, in order. Known shapes: coin, football, perfume,
-   rocket, cube, ball, controller, brush. */
+/* What is in the toy chest, in order. Known shapes: coin, football (AFL),
+   perfume, rocket, cube, ball, controller, brush. */
 export const CHEST = ["coin", "football", "perfume", "cube"];
 
 /* The hourglass on the centre island — one grain of sand per visit, which is
