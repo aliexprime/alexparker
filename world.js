@@ -598,7 +598,7 @@ function ecgWave(p) {
   return 0;
 }
 
-let raiseBed = null;
+let raiseBed = null, spikeVitals = null;
 
 function animRLDatix(group) {
   const ups = [];
@@ -633,10 +633,15 @@ function animRLDatix(group) {
     trace.add(m);
     bars.push(m);
   }
+  // Touching the monitor runs the trace hot for a few seconds.
+  let spike = 0;
+  spikeVitals = function () { spike = 1; touched(); };
   ups.push(function (t, dt, amt, idle) {
-    const a = Math.max(amt, idle);
+    spike = Math.max(0, spike - dt * 0.22);
+    const a = Math.min(1, Math.max(amt, idle) + spike);
     for (let i = 0; i < bars.length; i++) {
-      bars[i].position.y = ecgWave(t * 0.75 - i * 0.055) * 0.10 * a;
+      bars[i].position.y = ecgWave(t * (0.75 + spike * 1.5) - i * 0.055)
+                         * (0.10 + spike * 0.05) * a;
     }
   });
 
@@ -1166,7 +1171,7 @@ function buildMusic(b, g) {
   pottedPlant(b, -2.9, 2.4, 1.15);
 }
 
-let spinDecks = null;
+let spinDecks = null, burstMeters = null;
 
 function animMusic(group) {
   const ups = [];
@@ -1217,11 +1222,15 @@ function animMusic(group) {
     meterRoot.add(m);
     meters.push(m);
   }
+  // Touching the mixer pushes everything into the red for a moment.
+  let burst = 0;
+  burstMeters = function () { burst = 1; touched(); };
   ups.push(function (t, dt, amt, idle) {
-    const a = Math.max(amt, idle);
+    burst = Math.max(0, burst - dt * 0.35);
+    const a = Math.min(1, Math.max(amt, idle) + burst);
     for (let i = 0; i < meters.length; i++) {
-      const level = walk(t * 3.4 + i * 5.1);
-      meters[i].scale.y = 0.02 + level * 0.1 * a;
+      const level = walk(t * (3.4 + burst * 5) + i * 5.1);
+      meters[i].scale.y = 0.02 + (level * 0.1 + burst * 0.07) * a;
     }
   });
 
@@ -1510,7 +1519,7 @@ function dogHead(b) {
   }
 }
 
-let petDog = null;
+let petDog = null, toggleLamp = null;
 
 function animAbout(group, def, zone) {
   const ups = [];
@@ -1568,10 +1577,13 @@ function animAbout(group, def, zone) {
   const bulb = part(b => b.rock(0, 0, 0, 0.09, C.lampGlow), true);
   bulb.position.set(-0.94, topY + 0.42, 0.3);
   group.add(bulb);
+  let lampOn = 1, lampLit = 1;
+  toggleLamp = function () { lampOn = lampOn ? 0 : 1; touched(); };
   ups.push(function (t, dt, amt, idle) {
+    lampLit += (lampOn - lampLit) * (1 - Math.pow(0.004, dt));
     const a = Math.max(amt, idle);
     const s = 0.55 + a * (0.75 + Math.sin(t * 2.6) * 0.07 + Math.sin(t * 7.3) * 0.03);
-    bulb.scale.setScalar(s);
+    bulb.scale.setScalar(0.12 + s * lampLit);
   });
 
   // Steam off the mug.
@@ -1975,6 +1987,7 @@ ZONES.forEach(function (def, i) {
                      function () { vaultOpen = vaultOpen ? 0 : 1; touched(); }, 0.3));
     swings(addDetail(zone, SAFE_X, F + 0.5, SAFE_Z + 0.36, 0.95, 1.0, 1.05, 0.8, 0.34,
                      function () { safeOpen = safeOpen ? 0 : 1; touched(); }, 0.3));
+    addDetail(zone, 2.3, F + 0.62, 1.7, 1.5, 0.7, 1.1, 0.8, 0.45);      // the takings
   }
 
   if (def.id === "bjj") {
@@ -1984,16 +1997,35 @@ ZONES.forEach(function (def, i) {
                      function () { if (throwDummy) throwDummy(); }, 1.3));
     swings(addDetail(zone, BAG_X + 0.78, F + 1.0, BAG_Z, 0.7, 1.6, 1.3, 1.1, 0.36,
                      function () { if (hitBag) hitBag(); }, 0.7));
+    addDetail(zone, 0.1, F + 0.6, 3.0, 2.2, 0.9, 1.4, 1.0, 0.4);        // gi on the bench
+    addDetail(zone, -2.7, F + 0.17, 2.6, 1.3, 0.5, 0.95, 0.7, 0.4);     // spare mats
   }
 
   if (def.id === "music") {
     swings(addDetail(zone, -0.85, DECK_Y + 0.2, -0.35, 0.85, 0.4, 0.9, 0.6, 0.5,
                      function () { if (spinDecks) spinDecks(); }, 0.7));
+    swings(addDetail(zone, 0, DECK_Y + 0.13, -0.5, 0.8, 0.22, 0.7, 0.5, 0.55,
+                     function () { if (burstMeters) burstMeters(); }, 0.3));
+    for (const side of [-1, 1]) {
+      addDetail(zone, side * 2.6, F + 1.5, 0.5, 0.9, 1.15, 0.9, 0.8, 0.25);
+    }
+    addDetail(zone, 2.5, F + 0.35, -1.9, 1.1, 0.85, 0.9, 0.7, 0.4);     // record crate
+    addDetail(zone, -2.4, F + 0.85, -1.85, 1.9, 0.55, 1.25, 0.85, 0.45); // the synth
+  }
+
+  if (def.id === "projects") {
+    addDetail(zone, -2.95, F + 0.78, -0.6, 0.9, 1.6, 1.1, 0.95, 0.25);  // the shelf
+    addDetail(zone, 2.85, F + 0.55, -1.1, 1.2, 1.3, 1.0, 0.85, 0.3);    // the crates
   }
 
   if (def.id === "about") {
     swings(addDetail(zone, DOG_X, DOG_Y + 0.35, DOG_Z + 0.2, 1.3, 1.0, 1.35, 0.95, 0.3,
                      function () { if (petDog) petDog(); }, 1.0));
+    addDetail(zone, -0.35, ABOUT_TOP + 0.22, 0.3, 0.85, 0.6, 0.65, 0.45, 0.3, null, 0.4);
+    swings(addDetail(zone, -0.96, ABOUT_TOP + 0.4, 0.28, 0.5, 0.72, 0.55, 0.5, 0.25,
+                     function () { if (toggleLamp) toggleLamp(); }, 0.35));
+    addDetail(zone, 0.6, ABOUT_TOP + 0.1, 0.38, 0.36, 0.36, 0.34, 0.26, 0.35, null, 0.3);
+    addDetail(zone, -2.95, F + 1.05, -0.5, 0.9, 2.0, 1.3, 1.1, 0.22);   // the shelves
   }
 
   if (def.id === "hourglass") {
@@ -2014,7 +2046,11 @@ ZONES.forEach(function (def, i) {
   if (def.id === "rldatix") {
     swings(addDetail(zone, BED_X, F + 0.75, BED_Z - 0.2, 1.1, 0.5, 1.6, 1.1, 0.42,
                      function () { if (raiseBed) raiseBed(); }, 1.2));
-    addDetail(zone, 2.15, F + 1.28, 1.35, 0.7, 0.5, 0.75, 0.5, 0.3);
+    addDetail(zone, 2.15, F + 1.28, 1.35, 0.7, 0.5, 0.75, 0.5, 0.3);    // workstation
+    swings(addDetail(zone, BED_X + 0.95, F + 0.7, BED_Z - 1.4, 0.62, 0.46, 0.62, 0.42, 0.2,
+                     function () { if (spikeVitals) spikeVitals(); }, 0.25));
+    addDetail(zone, BED_X - 1.35, F + 1.3, BED_Z - 0.5, 0.5, 0.9, 0.7, 0.6, 0.3);
+    addDetail(zone, -2.95, F + 0.85, -0.42, 0.9, 1.7, 1.1, 0.95, 0.25);  // supply cabinet
     const chart = addDetail(zone, BED_X, CHART_Y, BED_Z + 1.42, 0.82, 0.86,
                             0.55, 0.46, 0.24, null, 0.1);
     CLIPBOARD.lines.forEach(function (line, k) {
@@ -2501,9 +2537,12 @@ function resize() {
   cssW = Math.max(1, window.innerWidth);
   cssH = Math.max(1, window.innerHeight);
 
-  // The whole pixel-art effect: render small, let CSS scale it up.
-  const div = cssW < 700 ? 1.35 : 1.6;
-  const w = clamp(Math.round(cssW / div), 300, 1400);
+  // The whole pixel-art effect: render small, let CSS scale it up. The divisor
+  // is the only dial that matters — smaller means finer pixels and more of
+  // them. Keep the two in step so a phone is not noticeably chunkier than a
+  // desktop, and let big displays run further before the cap bites.
+  const div = cssW < 700 ? 1.04 : 1.23;
+  const w = clamp(Math.round(cssW / div), 320, 1700);
   const h = Math.max(1, Math.round(w * (cssH / cssW)));
   renderer.setSize(w, h, false);
 
