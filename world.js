@@ -1085,42 +1085,6 @@ scene.add(fill);
 const world = new THREE.Group();
 scene.add(world);
 
-/* ---- Islets ------------------------------------------------------------------
-   Small uninhabited slabs drifting below and outside the ring. They do nothing
-   except give the empty space a sense of depth. */
-
-function buildIslets() {
-  const specs = [
-    { a: 0.5,  r: 15.0, y: -1.7, s: 2.8, kind: 0 },
-    { a: 2.1,  r: 15.6, y: -2.4, s: 2.2, kind: 1 },
-    { a: 3.5,  r: 14.8, y: -1.4, s: 3.0, kind: 2 },
-    { a: 4.9,  r: 15.9, y: -2.7, s: 2.4, kind: 1 },
-    { a: 5.9,  r: 14.4, y: -2.0, s: 2.0, kind: 0 }
-  ];
-  for (const sp of specs) {
-    const b = new Builder();
-    island(b, sp.s, C.baseTop);
-    if (sp.kind === 0) {
-      pottedPlant(b, 0, 0, 1.1);
-      crate(b, 0.65, F, 0.5, 0.42, 0.3);
-    } else if (sp.kind === 1) {
-      crate(b, 0, F, 0, 0.55, 0.2);
-      crate(b, -0.1, F + 0.55, 0.05, 0.4, -0.3);
-    } else {
-      for (let i = 0; i < 4; i++) {
-        b.box(0, F + i * 0.075, 0, 0.44, 0.075, 0.34, BOOKS[i + 1], i * 0.18);
-      }
-      pottedPlant(b, -0.7, 0.55, 0.8);
-    }
-    const g = new THREE.Group();
-    g.position.set(Math.sin(sp.a) * sp.r, sp.y, Math.cos(sp.a) * sp.r);
-    g.rotation.y = sp.a + 0.4;
-    g.add(solidMesh(b));
-    world.add(g);
-  }
-}
-buildIslets();
-
 /* ---- Sections ----------------------------------------------------------------
    Array order in content.js is the order round the ring. */
 
@@ -1192,8 +1156,8 @@ function homeFor() {
   // Standing more overhead on a tall screen puts the height to work instead of
   // leaving it as empty paper. The ring is circular, so no azimuth is narrower.
   return (cssH > cssW * 1.15)
-    ? { az: Math.PI * 0.1, el: 1.18, fitH: 15.4, fitV: 14.4 }   // islets may crop; sections never do
-    : { az: Math.PI * 0.23, el: 0.62, fitH: 17.4, fitV: 12.5 };
+    ? { az: Math.PI * 0.1, el: 1.18, fitH: 15.5, fitV: 14.4 }
+    : { az: Math.PI * 0.23, el: 0.62, fitH: 15.8, fitV: 10.9 };
 }
 
 let HOME = homeFor();
