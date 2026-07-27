@@ -15,7 +15,7 @@
 ============================================================================= */
 
 import * as THREE from "./vendor/three.module.min.js";
-import { ZONES, JAR_ZONE } from "./content.js";
+import { ZONES, JAR_ZONE, BOARD } from "./content.js";
 
 /* ---- Palette ---------------------------------------------------------------
    Muted and warm, so a room full of colour still sits quietly on paper. */
@@ -93,9 +93,6 @@ const C = {
   sand:      0xd7ae66,
   sandDark:  0xb9884a
 };
-
-// Whiteboard shorthand. Index tickers, not positions — swap in your own.
-const TICKERS = ["XJO", "SPX", "NDX"];
 
 const BOOKS = [0xb5553f, 0x4a7a8c, 0xc9a44c, 0x6b8f5e, 0x8a6b9e, 0xc2725e,
                0x5f7f9e, 0xa8894a, 0x7d9e6b, 0x9e5f5f];
@@ -209,42 +206,86 @@ function loc(x, z, ry, lx, lz) {
           z - Math.sin(ry) * lx + Math.cos(ry) * lz];
 }
 
-/* A 3x5 pixel font. Small enough to stay in the aesthetic, big enough to read
-   once you zoom in on a whiteboard. Rows run top to bottom. */
-const FONT3 = {
-  A: "111101111101101", B: "110101110101110", C: "111100100100111",
-  D: "110101101101110", E: "111100110100111", F: "111100110100100",
-  G: "111100101101111", H: "101101111101101", I: "111010010010111",
-  J: "001001001101111", K: "101101110101101", L: "100100100100111",
-  M: "101111111101101", N: "101111111111101", O: "111101101101111",
-  P: "111101111100100", Q: "111101101111001", R: "111101110101101",
-  S: "111100111001111", T: "111010010010010", U: "101101101101111",
-  V: "101101101101010", W: "101101111111101", X: "101101010101101",
-  Y: "101101010010010", Z: "111001010100111",
-  0: "111101101101111", 1: "010110010010111", 2: "111001111100111",
-  3: "111001111001111", 4: "101101111001001", 5: "111100111001111",
-  6: "111100111101111", 7: "111001001001001", 8: "111101111101111",
-  9: "111101111001111", "-": "000000111000000", " ": "000000000000000"
+/* A 5x7 pixel font — fine enough that a whiteboard can hold a sentence and
+   still be read once you zoom in on it. Rows run top to bottom. */
+const FONT = {
+  "0"  : "01110100011001110101110011000101110",
+  "1"  : "00100011000010000100001000010001110",
+  "2"  : "01110100010000100010001000100011111",
+  "3"  : "11111000100010000010000011000101110",
+  "4"  : "00010001100101010010111110001000010",
+  "5"  : "11111100001111000001000011000101110",
+  "6"  : "00110010001000011110100011000101110",
+  "7"  : "11111000010001000100010000100001000",
+  "8"  : "01110100011000101110100011000101110",
+  "9"  : "01110100011000101111000010001001100",
+  "A"  : "01110100011000111111100011000110001",
+  "B"  : "11110100011000111110100011000111110",
+  "C"  : "01110100011000010000100001000101110",
+  "D"  : "11110100011000110001100011000111110",
+  "E"  : "11111100001000011110100001000011111",
+  "F"  : "11111100001000011110100001000010000",
+  "G"  : "01110100011000010111100011000101111",
+  "H"  : "10001100011000111111100011000110001",
+  "I"  : "11111001000010000100001000010011111",
+  "J"  : "00111000100001000010000101001001100",
+  "K"  : "10001100101010011000101001001010001",
+  "L"  : "10000100001000010000100001000011111",
+  "M"  : "10001110111010110101100011000110001",
+  "N"  : "10001110011010110011100011000110001",
+  "O"  : "01110100011000110001100011000101110",
+  "P"  : "11110100011000111110100001000010000",
+  "Q"  : "01110100011000110001101011001001101",
+  "R"  : "11110100011000111110101001001010001",
+  "S"  : "01111100001000001110000010000111110",
+  "T"  : "11111001000010000100001000010000100",
+  "U"  : "10001100011000110001100011000101110",
+  "V"  : "10001100011000110001100010101000100",
+  "W"  : "10001100011000110101101011101110001",
+  "X"  : "10001100010101000100010101000110001",
+  "Y"  : "10001100010101000100001000010000100",
+  "Z"  : "11111000010001000100010001000011111",
+  " "  : "00000000000000000000000000000000000",
+  "!"  : "00100001000010000100001000000000100",
+  ","  : "00000000000000000000011000010001000",
+  "-"  : "00000000000000011111000000000000000",
+  "."  : "00000000000000000000000000110001100",
+  "="  : "00000000001111100000111110000000000",
+  "?"  : "01110100010000100010001000000000100",
 };
+const GLYPH_W = 5, GLYPH_H = 7;
 
 /** Write `str` on a surface facing +z: characters advance along +x, rows down.
     Every scene faces +z out of the ring, so this is the readable direction. */
 function textXY(b, str, x0, yTop, z, px, color) {
   let x = x0;
   for (const ch of str.toUpperCase()) {
-    const glyph = FONT3[ch];
+    const glyph = FONT[ch];
     if (glyph) {
-      for (let r = 0; r < 5; r++) {
-        for (let c = 0; c < 3; c++) {
-          if (glyph[r * 3 + c] === "1") {
+      for (let r = 0; r < GLYPH_H; r++) {
+        for (let c = 0; c < GLYPH_W; c++) {
+          if (glyph[r * GLYPH_W + c] === "1") {
             b.box(x + c * px, yTop - (r + 1) * px, z, px, px, 0.022, color);
           }
         }
       }
     }
-    x += px * 4;
+    x += px * (GLYPH_W + 1);
   }
   return x;
+}
+
+/** Break a line so it fits a given number of characters. */
+function wrapText(str, max) {
+  const out = [];
+  let cur = "";
+  for (const w of str.split(" ")) {
+    if (!cur) cur = w;
+    else if ((cur + " " + w).length <= max) cur += " " + w;
+    else { out.push(cur); cur = w; }
+  }
+  if (cur) out.push(cur);
+  return out;
 }
 
 function hash1(n) {
@@ -493,6 +534,11 @@ function animRLDatix(group) {
    Section: Investing
 ============================================================================= */
 
+// The board is big enough, and specific enough, to be worth looking at on its
+// own — so its geometry is described here and picked up as a focus target.
+const BOARD_X = 1.35, BOARD_Z = -2.95, BOARD_W = 3.5, BOARD_H = 2.15;
+const BOARD_Y = F + 1.55;
+
 function buildInvesting(b, g) {
   island(b, ISLAND, C.invFloor);
 
@@ -524,29 +570,49 @@ function buildInvesting(b, g) {
   chair(b, 0.35, 2.05, Math.PI, C.woodDark);
 
   // Whiteboard on an easel at the back, turned to face out of the ring so it
-  // can actually be read.
-  const wx = 1.7, wz = -2.8;
-  b.boxC(wx, F + 1.14, wz + 0.03, 2.15, 1.2, 0.06, C.board);
-  b.boxC(wx, F + 1.14, wz - 0.02, 2.25, 1.3, 0.03, 0xb8b2a2);
-  for (const lx of [-0.9, 0.9]) {
-    b.boxC(wx + lx, F + 0.56, wz - 0.14, 0.05, 1.12, 0.05, C.woodDark, 0.18, 0, 0);
-    b.boxC(wx + lx, F + 0.56, wz + 0.18, 0.05, 1.12, 0.05, C.woodDark, -0.18, 0, 0);
+  // can be read, and big enough to hold a sentence.
+  const wx = BOARD_X, wz = BOARD_Z;
+  b.boxC(wx, BOARD_Y, wz + 0.03, BOARD_W, BOARD_H, 0.06, C.board);
+  b.boxC(wx, BOARD_Y, wz - 0.02, BOARD_W + 0.12, BOARD_H + 0.12, 0.03, 0xb8b2a2);
+  for (const lx of [-BOARD_W / 2 + 0.2, BOARD_W / 2 - 0.2]) {
+    b.boxC(wx + lx, F + 0.4, wz - 0.16, 0.055, 1.0, 0.055, C.woodDark, 0.2, 0, 0);
+    b.boxC(wx + lx, F + 0.4, wz + 0.2, 0.055, 1.0, 0.055, C.woodDark, -0.2, 0, 0);
   }
+  b.boxC(wx, F + 0.42, wz + 0.06, BOARD_W - 0.5, 0.06, 0.12, C.wood);   // pen tray
 
-  // What is actually written on it. Edit TICKERS to change what it says.
-  const fz = wz + 0.075, fpx = 0.038;
-  let row = F + 1.62;
-  for (let i = 0; i < TICKERS.length; i++) {
-    const end = textXY(b, TICKERS[i], wx - 0.88, row, fz, fpx, C.boardInk);
+  // What is written on it lives in content.js.
+  const fz = wz + 0.075, fpx = 0.02;
+  const lineH = fpx * (GLYPH_H + 2.0);
+  const cols = Math.floor((BOARD_W - 0.42) / (fpx * (GLYPH_W + 1)));
+  const left = wx - BOARD_W / 2 + 0.2;
+  let row = BOARD_Y + BOARD_H / 2 - 0.16;
+
+  textXY(b, BOARD.heading, left, row, fz, fpx, C.boardInk2);
+  b.box(left, row - fpx * (GLYPH_H + 1.1), fz, BOARD_W - 0.42, 0.022, 0.02, C.boardInk2);
+  row -= lineH * 1.4;
+
+  // Tickers near the top, where the desk in front cannot cover them.
+  let tx = left;
+  for (let i = 0; i < BOARD.tickers.length; i++) {
+    const end = textXY(b, BOARD.tickers[i], tx, row, fz, fpx, C.boardInk2);
     const r = rng(i * 17 + 3);
-    for (let k = 0; k < 8; k++) {              // a sparkline beside each one
-      const h = 0.03 + r() * 0.13;
-      b.box(end + 0.08 + k * 0.055, row - 0.19 + h / 2, fz, 0.04, h, 0.02,
-            i === 1 ? C.boardInk2 : C.boardInk);
+    for (let k = 0; k < 7; k++) {
+      const h = 0.025 + r() * 0.1;
+      b.box(end + 0.04 + k * 0.032, row - fpx * GLYPH_H + h / 2, fz, 0.024, h, 0.02, C.boardInk2);
     }
-    row -= 0.27;
+    tx = end + 0.04 + 7 * 0.032 + 0.14;
   }
-  b.boxC(wx - 0.1, F + 0.74, fz, 1.5, 0.035, 0.02, C.boardInk2);
+  row -= lineH * 1.5;
+
+  for (const q of BOARD.questions) {
+    const lines = wrapText(q, cols - 2);
+    for (let i = 0; i < lines.length; i++) {
+      if (i === 0) b.box(left, row - fpx * 4, fz, fpx * 2, fpx, 0.02, C.boardInk);
+      textXY(b, lines[i], left + fpx * 3, row, fz, fpx, C.boardInk);
+      row -= lineH;
+    }
+    row -= lineH * 0.3;
+  }
 
   b.box(2.3, F, 1.7, 1.25, 0.42, 0.85, C.woodDark);
   b.box(2.3, F + 0.42, 1.7, 1.35, 0.07, 0.95, C.wood);
@@ -647,16 +713,16 @@ function buildBJJ(b, g) {
 
   // White belt, two stripes taped across the bar.
   const wx = rx - 0.46;
-  b.box(wx, F + 0.98, rz, 0.26, 0.78, 0.08, C.beltWhite);
-  b.box(wx, F + 1.00, rz, 0.28, 0.3, 0.1, C.beltBlack);
-  b.box(wx - 0.068, F + 1.05, rz, 0.05, 0.22, 0.12, C.beltWhite);
-  b.box(wx + 0.018, F + 1.05, rz, 0.05, 0.22, 0.12, C.beltWhite);
+  b.box(wx, F + 0.96, rz, 0.28, 0.82, 0.08, C.beltWhite);
+  b.box(wx, F + 1.02, rz, 0.3, 0.36, 0.1, C.beltBlack);          // the rank bar
+  b.box(wx, F + 1.10, rz, 0.32, 0.055, 0.12, C.beltWhite);       // tape, across
+  b.box(wx, F + 1.21, rz, 0.32, 0.055, 0.12, C.beltWhite);
 
-  // Taekwondo black belt, one gold stripe.
+  // Taekwondo black belt, one gold stripe across it.
   const kx = rx + 0.56;
-  b.box(kx, F + 0.98, rz, 0.26, 0.78, 0.08, C.beltBlack);
-  b.box(kx, F + 1.00, rz, 0.28, 0.3, 0.1, 0x201e1c);
-  b.box(kx - 0.025, F + 1.05, rz, 0.05, 0.22, 0.12, C.brass);
+  b.box(kx, F + 0.96, rz, 0.28, 0.82, 0.08, C.beltBlack);
+  b.box(kx, F + 1.02, rz, 0.3, 0.36, 0.1, 0x201e1c);
+  b.box(kx, F + 1.15, rz, 0.32, 0.065, 0.12, C.brass);
 
   // A gi folded on a bench, off the mat.
   b.box(0.3, F, 3.0, 2.0, 0.42, 0.55, C.woodDark);
@@ -1220,6 +1286,34 @@ const ZONE_BUILD = {
 
 const zones = [];
 const pickables = [];
+const detailHits = [];
+
+/** A single object inside a scene worth looking at on its own. Local coords. */
+function addDetail(zone, lx, ly, lz, w, h, fitH, fitV, el) {
+  const hit = new THREE.Mesh(
+    new THREE.BoxGeometry(w, h, 0.6),
+    new THREE.MeshBasicMaterial({ visible: false })
+  );
+  hit.position.set(lx, ly, lz);
+  zone.group.add(hit);
+
+  const ry = zone.group.rotation.y;
+  const detail = {
+    zone: zone,
+    // Face-on: no azimuth offset, because the whole point is to read it.
+    az: ry,
+    el: el,
+    fitH: fitH,
+    fitV: fitV,
+    pos: new THREE.Vector3(
+      zone.group.position.x + Math.cos(ry) * lx + Math.sin(ry) * lz,
+      ly,
+      zone.group.position.z - Math.sin(ry) * lx + Math.cos(ry) * lz
+    )
+  };
+  hit.userData.detail = detail;
+  detailHits.push(hit);
+}
 
 function addZone(def, x, z, angle, hitW, hitH) {
   const spec = ZONE_BUILD[def.id];
@@ -1261,7 +1355,10 @@ function addZone(def, x, z, angle, hitW, hitH) {
 
 ZONES.forEach(function (def, i) {
   const a = (i / ZONES.length) * Math.PI * 2;
-  addZone(def, Math.sin(a) * RING_R, Math.cos(a) * RING_R, a, ISLAND, 3.6);
+  const zone = addZone(def, Math.sin(a) * RING_R, Math.cos(a) * RING_R, a, ISLAND, 3.6);
+  if (zone && def.id === "investing") {
+    addDetail(zone, BOARD_X, BOARD_Y, BOARD_Z + 0.2, BOARD_W, BOARD_H, 3.05, 1.75, 0.3);
+  }
 });
 addZone(JAR_ZONE, 0, 0, 0, 4.8, 5.0);
 
@@ -1423,26 +1520,32 @@ function zoomAt(px, py, factor) {
   touched();
 }
 
+/* Details sit inside a zone's own hit box, so they are tested first — a tap on
+   the whiteboard should get you the whiteboard, not the island it stands on. */
 function pick(px, py) {
   ndc.x = (px / cssW) * 2 - 1;
   ndc.y = -(py / cssH) * 2 + 1;
   ray.setFromCamera(ndc, camera);
-  const hits = ray.intersectObjects(pickables, false);
-  return hits.length ? hits[0].object.userData.zone : null;
+  const dh = ray.intersectObjects(detailHits, false);
+  if (dh.length) return { detail: dh[0].object.userData.detail, zone: dh[0].object.userData.detail.zone };
+  const zh = ray.intersectObjects(pickables, false);
+  return zh.length ? { zone: zh[0].object.userData.zone } : null;
 }
 
 /* Nothing is labelled, so hovering has to say "this is a thing" by itself: the
    island under the cursor floats up a little. */
 function hoverAt(px, py) {
-  const z = pick(px, py);
+  const p = pick(px, py);
+  const z = p ? p.zone : null;
   if (z === hovered) return;
   hovered = z;
   document.body.classList.toggle("overzone", !!z);
 }
 
 function clickAt(px, py) {
-  const z = pick(px, py);
-  if (z) focusZone(z); else closePanel();
+  const p = pick(px, py);
+  if (!p) { closePanel(); return; }
+  if (p.detail) focusDetail(p.detail); else focusZone(p.zone);
 }
 
 /* =============================================================================
@@ -1476,6 +1579,25 @@ function applyPanelShift() {
   }
 }
 
+/** Move the camera square onto one object and leave the panel as it is. */
+function focusDetail(d) {
+  if (!activeZone) azBeforeFocus = want.az;
+  activeZone = d.zone;
+
+  const portrait = cssH > cssW * 1.15;
+  want.az = d.az;
+  want.el = d.el;
+  want.fitH = portrait ? d.fitH * 0.78 : d.fitH;
+  want.fitV = portrait ? d.fitV * 1.2 : d.fitV;
+  want.scale = 1;
+  want.target.copy(d.pos);
+
+  fillPanel(d.zone.def);
+  document.body.classList.add("panel-open");
+  touched();
+  requestAnimationFrame(applyPanelShift);
+}
+
 function focusZone(zone) {
   if (!activeZone) azBeforeFocus = want.az;
   activeZone = zone;
@@ -1491,7 +1613,13 @@ function focusZone(zone) {
   want.scale = 1;
   want.target.set(zone.group.position.x, small ? 2.3 : 1.5, zone.group.position.z);
 
-  const d = zone.def;
+  fillPanel(zone.def);
+  document.body.classList.add("panel-open");
+  touched();
+  requestAnimationFrame(applyPanelShift);   // measure once the panel has laid out
+}
+
+function fillPanel(d) {
   elEyebrow.textContent = d.eyebrow || "";
   elTitle.textContent = d.title || d.label;
   elLede.textContent = d.lede || "";
@@ -1530,10 +1658,6 @@ function focusZone(zone) {
 
   elTodo.hidden = !d.todo;
   elTodo.textContent = d.todo || "";
-
-  document.body.classList.add("panel-open");
-  touched();
-  requestAnimationFrame(applyPanelShift);   // measure once the panel has laid out
 }
 
 function closePanel() {

@@ -35,7 +35,7 @@ export const ZONES = [
     eyebrow: "Practice",
     title: "Markets",
     lede: "Write the reasoning down before the outcome is known. Nothing here is advice.",
-    todo: "The whiteboard shows XJO, SPX and NDX. Change TICKERS at the top of world.js to whatever you actually watch, then delete this line."
+    todo: "Tap the whiteboard to read it. The questions on it are placeholders \u2014 rewrite BOARD at the bottom of this file, then delete this line."
   },
 
   {
@@ -92,6 +92,19 @@ export const ZONES = [
     todo: "One or two sentences of your own, if you want them. Otherwise leave it this short and delete this line."
   }
 ];
+
+/* What is written on the whiteboard in the investing scene. Questions first,
+   then the tickers along the bottom. Tap the board itself to read it all. */
+export const BOARD = {
+  heading: "WHAT ACTUALLY MOVES IT",
+  questions: [
+    "AI BUBBLE POP?",
+    "MORE COMPUTE = BETTER OUTCOMES?",
+    "WHO PAYS FOR THE DATACENTRE?",
+    "RATES DOWN - THEN WHAT?"
+  ],
+  tickers: ["XJO", "SPX", "NDX"]
+};
 
 /* The hourglass on the centre island — one grain of sand per visit, which is
    where this site started. `keepAz` stops the camera swinging round, since an
