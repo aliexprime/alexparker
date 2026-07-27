@@ -15,7 +15,7 @@
 ============================================================================= */
 
 import * as THREE from "./vendor/three.module.min.js";
-import { ZONES, JAR_ZONE, BOARD } from "./content.js";
+import { ZONES, JAR_ZONE, BOARD, CHEST } from "./content.js";
 
 /* ---- Palette ---------------------------------------------------------------
    Muted and warm, so a room full of colour still sits quietly on paper. */
@@ -75,6 +75,7 @@ const C = {
   ledCyan:   0x7fd6d0,
   ledAmber:  0xe8b95c,
 
+  perfume:   0xd7b0c0,
   rug:       0xd0b995,
   chest:     0x9c6a3f,
   chestLid:  0x7f5330,
@@ -569,38 +570,17 @@ function buildInvesting(b, g) {
   b.box(1.2, topY, 0.6, 0.2, 0.24, 0.14, C.paper);
   chair(b, 0.35, 2.05, Math.PI, C.woodDark);
 
-  // Whiteboard on an easel at the back, turned to face out of the ring so it
-  // can be read, and big enough to hold a sentence.
+  // The stand only. The panel itself is a separate mesh so it can turn over,
+  // built in animInvesting below.
   const wx = BOARD_X, wz = BOARD_Z;
-  b.boxC(wx, BOARD_Y, wz + 0.03, BOARD_W, BOARD_H, 0.06, C.board);
-  b.boxC(wx, BOARD_Y, wz - 0.02, BOARD_W + 0.12, BOARD_H + 0.12, 0.03, 0xb8b2a2);
-  for (const lx of [-BOARD_W / 2 + 0.2, BOARD_W / 2 - 0.2]) {
-    b.boxC(wx + lx, F + 0.4, wz - 0.16, 0.055, 1.0, 0.055, C.woodDark, 0.2, 0, 0);
-    b.boxC(wx + lx, F + 0.4, wz + 0.2, 0.055, 1.0, 0.055, C.woodDark, -0.2, 0, 0);
+  const postX = BOARD_W / 2 + 0.16, postTop = BOARD_Y + BOARD_H / 2 + 0.16;
+  for (const sgn of [-1, 1]) {
+    b.box(wx + sgn * postX, F, wz, 0.13, postTop - F, 0.13, C.woodDark);
+    b.box(wx + sgn * postX, F, wz, 0.2, 0.09, 0.9, C.woodDark);            // foot
+    b.box(wx + sgn * postX, BOARD_Y - 0.02, wz, 0.19, 0.12, 0.19, C.brass); // pivot
   }
-  b.boxC(wx, F + 0.42, wz + 0.06, BOARD_W - 0.5, 0.06, 0.12, C.wood);   // pen tray
-
-  // What is written on it lives in content.js.
-  const fz = wz + 0.075, fpx = 0.02;
-  const lineH = fpx * (GLYPH_H + 2.0);
-  const cols = Math.floor((BOARD_W - 0.42) / (fpx * (GLYPH_W + 1)));
-  const left = wx - BOARD_W / 2 + 0.2;
-  let row = BOARD_Y + BOARD_H / 2 - 0.16;
-
-  textXY(b, BOARD.heading, left, row, fz, fpx, C.boardInk2);
-  // box() centres on x, so the rule is drawn from the middle of the board.
-  b.box(wx, row - fpx * (GLYPH_H + 1.1), fz, BOARD_W - 0.42, 0.022, 0.02, C.boardInk2);
-  row -= lineH * 1.6;
-
-  for (const q of BOARD.questions) {
-    const lines = wrapText(q, cols - 2);
-    for (let i = 0; i < lines.length; i++) {
-      if (i === 0) b.box(left, row - fpx * 4, fz, fpx * 2, fpx, 0.02, C.boardInk);
-      textXY(b, lines[i], left + fpx * 3, row, fz, fpx, C.boardInk);
-      row -= lineH;
-    }
-    row -= lineH * 0.3;
-  }
+  b.box(wx, postTop - 0.11, wz, BOARD_W + 0.46, 0.11, 0.13, C.woodDark);
+  b.box(wx, F + 0.42, wz + 0.24, BOARD_W - 0.5, 0.06, 0.14, C.wood);       // pen tray
 
   b.box(2.3, F, 1.7, 1.25, 0.42, 0.85, C.woodDark);
   b.box(2.3, F + 0.42, 1.7, 1.35, 0.07, 0.95, C.wood);
@@ -620,8 +600,63 @@ function buildInvesting(b, g) {
   pottedPlant(b, -1.0, 2.5, 1.1);
 }
 
+/** One side of the board, drawn around the panel's own centre so the same code
+    does the front and the back — the back group is simply turned 180 degrees,
+    which keeps its text the right way round. */
+function buildBoardFace(b, face) {
+  const fpx = 0.02;
+  const lineH = fpx * (GLYPH_H + 2.0);
+  const cols = Math.floor((BOARD_W - 0.42) / (fpx * (GLYPH_W + 1)));
+  const left = -BOARD_W / 2 + 0.2;
+  const fz = 0.045;
+  let row = BOARD_H / 2 - 0.16;
+
+  textXY(b, face.heading, left, row, fz, fpx, C.boardInk2);
+  b.box(0, row - fpx * (GLYPH_H + 1.1), fz, BOARD_W - 0.42, 0.022, 0.02, C.boardInk2);
+  row -= lineH * 1.6;
+
+  for (const q of face.lines) {
+    const wrapped = wrapText(q, cols - 2);
+    for (let i = 0; i < wrapped.length; i++) {
+      if (i === 0) b.box(left, row - fpx * 4, fz, fpx * 2, fpx, 0.02, C.boardInk);
+      textXY(b, wrapped[i], left + fpx * 3, row, fz, fpx, C.boardInk);
+      row -= lineH;
+    }
+    row -= lineH * 0.3;
+  }
+}
+
+let boardPivot = null;
+let boardTurned = 0;        // 0 front, 1 back
+
 function animInvesting(group) {
   const ups = [];
+
+  // The panel, hung between the two posts so it can be turned over.
+  boardPivot = new THREE.Group();
+  boardPivot.position.set(BOARD_X, BOARD_Y, BOARD_Z);
+  group.add(boardPivot);
+
+  const panel = new Builder();
+  panel.boxC(0, 0, 0, BOARD_W, BOARD_H, 0.07, C.board);
+  panel.boxC(0, BOARD_H / 2 + 0.04, 0, BOARD_W + 0.14, 0.08, 0.1, 0xb8b2a2);
+  panel.boxC(0, -BOARD_H / 2 - 0.04, 0, BOARD_W + 0.14, 0.08, 0.1, 0xb8b2a2);
+  panel.boxC(-BOARD_W / 2 - 0.07, 0, 0, 0.08, BOARD_H + 0.16, 0.1, 0xb8b2a2);
+  panel.boxC(BOARD_W / 2 + 0.07, 0, 0, 0.08, BOARD_H + 0.16, 0.1, 0xb8b2a2);
+  buildBoardFace(panel, BOARD.front);
+  boardPivot.add(solidMesh(panel));
+
+  const back = new Builder();
+  buildBoardFace(back, BOARD.back);
+  const backGroup = new THREE.Group();
+  backGroup.rotation.y = Math.PI;
+  backGroup.add(solidMesh(back));
+  boardPivot.add(backGroup);
+
+  ups.push(function (t, dt) {
+    const to = boardTurned * Math.PI;
+    boardPivot.rotation.y += (to - boardPivot.rotation.y) * (1 - Math.pow(0.004, dt));
+  });
 
   // The chart scrolls: each candle inherits the one to its right.
   const chart = new THREE.Group();
@@ -930,7 +965,70 @@ function buildProjects(b, g) {
   void g;
 }
 
-function animProjects(group, def) {
+/** The objects that live in the chest. Add a case to add a shape. */
+function makeToy(kind, i) {
+  const b = new Builder();
+  const palette = [C.toyRed, C.toyBlue, C.toyYellow, C.toyGreen, C.toyPurple];
+  const col = palette[i % palette.length];
+
+  switch (kind) {
+    case "coin":
+      b.cylC(0, 0, 0, 0.32, 0.32, 0.09, 14, C.brass, Math.PI / 2, 0, 0);
+      for (const f of [0.05, -0.05]) {
+        b.cylC(0, 0, f, 0.25, 0.25, 0.02, 14, 0xe2c274, Math.PI / 2, 0, 0);
+      }
+      b.boxC(0, 0, 0.062, 0.07, 0.17, 0.02, 0xa8853c);
+      b.boxC(0, 0.05, 0.062, 0.15, 0.06, 0.02, 0xa8853c);
+      break;
+
+    case "football":
+      b.rock(0, 0, 0, 0.27, C.paper, 1);
+      for (const [dx, dy, dz] of [[0, 1, 0], [0, -1, 0], [0.9, 0.3, 0.3],
+                                  [-0.9, 0.3, -0.3], [0.3, -0.3, 0.9], [-0.3, -0.3, -0.9]]) {
+        b.rock(dx * 0.22, dy * 0.22, dz * 0.22, 0.095, 0x33302c, 0);
+      }
+      break;
+
+    case "perfume":
+      b.box(0, -0.28, 0, 0.28, 0.32, 0.17, C.perfume);
+      b.box(0, -0.3, 0.09, 0.17, 0.12, 0.02, 0xf2e2e8);      // label
+      b.box(0, 0.04, 0, 0.11, 0.1, 0.09, C.perfume);          // neck
+      b.box(0, 0.14, 0, 0.17, 0.11, 0.13, C.brass);           // collar
+      b.box(0.1, 0.19, 0, 0.14, 0.035, 0.035, C.brass);       // tube
+      b.rock(0.22, 0.2, 0, 0.075, 0x9b7684);                  // atomiser bulb
+      break;
+
+    case "rocket":
+      b.cyl(0, -0.2, 0, 0.11, 0.13, 0.4, 8, col);
+      b.cone(0, 0.3, 0, 0.13, 0.2, 8, C.paper);
+      b.box(-0.14, -0.2, 0, 0.06, 0.16, 0.16, C.paper);
+      b.box(0.14, -0.2, 0, 0.06, 0.16, 0.16, C.paper);
+      break;
+
+    case "ball":
+      b.rock(0, 0, 0, 0.22, col, 1);
+      break;
+
+    case "controller":
+      b.box(-0.26, -0.09, -0.15, 0.52, 0.18, 0.3, col);
+      b.cyl(-0.13, 0.09, 0, 0.055, 0.055, 0.04, 6, C.paper);
+      b.cyl(0.13, 0.09, 0, 0.055, 0.055, 0.04, 6, C.paper);
+      break;
+
+    case "brush":
+      b.cyl(0, -0.24, 0, 0.035, 0.035, 0.42, 6, C.woodLight);
+      b.cyl(0, 0.18, 0, 0.055, 0.05, 0.1, 6, C.brass);
+      b.cyl(0, 0.28, 0, 0.04, 0.06, 0.12, 6, col);
+      break;
+
+    default:                                   // cube
+      b.box(-0.17, -0.17, -0.17, 0.34, 0.34, 0.34, col);
+      b.box(-0.18, -0.02, -0.18, 0.36, 0.06, 0.36, C.paper);
+  }
+  return solidMesh(b);
+}
+
+function animProjects(group) {
   const ups = [];
 
   const pivot = new THREE.Group();
@@ -943,45 +1041,27 @@ function animProjects(group, def) {
   pivot.add(solidMesh(lid));
   group.add(pivot);
 
-  // One toy per item in content.js.
-  const palette = [C.toyRed, C.toyBlue, C.toyYellow, C.toyGreen, C.toyPurple];
-  const count = Math.max(1, Math.min(7, (def.items && def.items.length) || 4));
+  // What is in the chest is listed in content.js.
   const toys = new THREE.Group();
   toys.position.set(0, F + 0.66, 0);
   group.add(toys);
 
-  for (let i = 0; i < count; i++) {
-    const col = palette[i % palette.length];
-    const b = new Builder();
-    switch (i % 5) {
-      case 0:
-        b.cyl(0, -0.2, 0, 0.11, 0.13, 0.4, 8, col);
-        b.cone(0, 0.3, 0, 0.13, 0.2, 8, C.paper);
-        b.box(-0.14, -0.2, 0, 0.06, 0.16, 0.16, C.paper);
-        b.box(0.14, -0.2, 0, 0.06, 0.16, 0.16, C.paper);
-        break;
-      case 1:
-        b.box(-0.16, -0.16, -0.16, 0.32, 0.32, 0.32, col);
-        b.box(-0.17, -0.02, -0.17, 0.34, 0.06, 0.34, C.paper);
-        break;
-      case 2:
-        b.rock(0, 0, 0, 0.2, col, 1);
-        break;
-      case 3:
-        b.box(-0.24, -0.08, -0.14, 0.48, 0.16, 0.28, col);
-        b.cyl(-0.12, 0.08, 0, 0.05, 0.05, 0.04, 6, C.paper);
-        b.cyl(0.12, 0.08, 0, 0.05, 0.05, 0.04, 6, C.paper);
-        break;
-      default:
-        b.cyl(0, -0.24, 0, 0.035, 0.035, 0.42, 6, C.woodLight);
-        b.cyl(0, 0.18, 0, 0.055, 0.05, 0.1, 6, C.brass);
-        b.cyl(0, 0.28, 0, 0.04, 0.06, 0.12, 6, col);
-    }
-    const mesh = solidMesh(b);
-    const a = (i / count) * Math.PI * 2 + 0.6;
-    mesh.userData.home = { x: Math.cos(a) * 0.64, z: -0.2 + Math.sin(a) * 0.36 };
+  const kinds = (CHEST && CHEST.length) ? CHEST : ["cube"];
+  const TOY_SCALE = 1.18;
+  for (let i = 0; i < Math.min(7, kinds.length); i++) {
+    const mesh = makeToy(kinds[i], i);
+    mesh.scale.setScalar(TOY_SCALE);
+    // Laid out across the chest rather than round it, so that nothing ends up
+    // hiding behind anything else from the front.
+    const n = Math.min(7, kinds.length);
+    const t = n === 1 ? 0.5 : i / (n - 1);
+    mesh.userData.home = {
+      x: (t - 0.5) * 1.86,
+      z: -0.2 + Math.sin(t * Math.PI) * 0.16,
+      y: Math.sin(t * Math.PI) * 0.09
+    };
     mesh.userData.phase = i * 0.8;
-    mesh.userData.spin = 0.4 + (i % 3) * 0.25;
+    mesh.userData.spin = 0.35 + (i % 3) * 0.2;
     mesh.position.set(0, -0.34, -0.4);
     toys.add(mesh);
   }
@@ -994,7 +1074,7 @@ function animProjects(group, def) {
       const wobble = Math.sin(t * 1.8 + m.userData.phase) * 0.05;
       m.position.x += (home.x * amt - m.position.x) * Math.min(1, dt * 5);
       m.position.z += ((home.z * amt) + (1 - amt) * -0.4 - m.position.z) * Math.min(1, dt * 5);
-      m.position.y += (((0.5 + wobble) * amt - 0.34 * (1 - amt)) - m.position.y) * Math.min(1, dt * 5);
+      m.position.y += (((0.82 + home.y + wobble) * amt - 0.34 * (1 - amt)) - m.position.y) * Math.min(1, dt * 5);
       m.rotation.y += dt * m.userData.spin * (0.15 + amt);
       m.visible = m.position.y > -0.3;
     }
@@ -1264,7 +1344,7 @@ const RING_R = 11.2;
 
 const ZONE_BUILD = {
   rldatix:   { build: buildRLDatix,   anim: animRLDatix },
-  investing: { build: buildInvesting, anim: animInvesting },
+  investing: { build: buildInvesting, anim: animInvesting, always: true },
   bjj:       { build: buildBJJ,       anim: animBJJ },
   music:     { build: buildMusic,     anim: animMusic },
   projects:  { build: buildProjects,  anim: animProjects },
@@ -1277,7 +1357,7 @@ const pickables = [];
 const detailHits = [];
 
 /** A single object inside a scene worth looking at on its own. Local coords. */
-function addDetail(zone, lx, ly, lz, w, h, fitH, fitV, el) {
+function addDetail(zone, lx, ly, lz, w, h, fitH, fitV, el, act) {
   const hit = new THREE.Mesh(
     new THREE.BoxGeometry(w, h, 0.6),
     new THREE.MeshBasicMaterial({ visible: false })
@@ -1299,6 +1379,7 @@ function addDetail(zone, lx, ly, lz, w, h, fitH, fitV, el) {
       zone.group.position.z - Math.sin(ry) * lx + Math.cos(ry) * lz
     )
   };
+  detail.act = act || null;
   hit.userData.detail = detail;
   detailHits.push(hit);
 }
@@ -1345,7 +1426,8 @@ ZONES.forEach(function (def, i) {
   const a = (i / ZONES.length) * Math.PI * 2;
   const zone = addZone(def, Math.sin(a) * RING_R, Math.cos(a) * RING_R, a, ISLAND, 3.6);
   if (zone && def.id === "investing") {
-    addDetail(zone, BOARD_X, BOARD_Y, BOARD_Z + 0.2, BOARD_W, BOARD_H, 3.05, 1.75, 0.3);
+    addDetail(zone, BOARD_X, BOARD_Y, BOARD_Z, BOARD_W, BOARD_H, 3.05, 1.75, 0.3,
+               function () { boardTurned = boardTurned ? 0 : 1; touched(); });
   }
 });
 addZone(JAR_ZONE, 0, 0, 0, 4.8, 5.0);
@@ -1549,6 +1631,7 @@ const elItems = document.getElementById("panelItems");
 const elTodo = document.getElementById("panelTodo");
 
 let activeZone = null;
+let activeDetail = null;
 let azBeforeFocus = HOME.az;
 
 /** Push the view clear of whichever edge the panel occupies. Measured against
@@ -1569,8 +1652,11 @@ function applyPanelShift() {
 
 /** Move the camera square onto one object and leave the panel as it is. */
 function focusDetail(d) {
+  // Already looking at it? Then the tap means "do the thing" — turn the board.
+  if (activeDetail === d && d.act) { d.act(); return; }
   if (!activeZone) azBeforeFocus = want.az;
   activeZone = d.zone;
+  activeDetail = d;
 
   const portrait = cssH > cssW * 1.15;
   want.az = d.az;
@@ -1589,6 +1675,7 @@ function focusDetail(d) {
 function focusZone(zone) {
   if (!activeZone) azBeforeFocus = want.az;
   activeZone = zone;
+  activeDetail = null;
 
   const portrait = cssH > cssW * 1.15;
   // Offset off the island's facing, so a focused scene reads as a diorama in
@@ -1651,6 +1738,7 @@ function fillPanel(d) {
 function closePanel() {
   if (!activeZone) return;
   activeZone = null;
+  activeDetail = null;
   want.az = azBeforeFocus;
   want.el = HOME.el;
   want.fitH = HOME.fitH;

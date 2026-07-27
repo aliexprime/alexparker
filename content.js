@@ -35,7 +35,7 @@ export const ZONES = [
     eyebrow: "Practice",
     title: "Markets",
     lede: "Write the reasoning down before the outcome is known. Nothing here is advice.",
-    todo: "Tap the whiteboard to read it. The questions on it are placeholders \u2014 rewrite BOARD at the bottom of this file, then delete this line."
+    todo: "Tap the board to read it, tap again to turn it over. Both sides are placeholders \u2014 rewrite BOARD at the bottom of this file, then delete this line."
   },
 
   {
@@ -77,7 +77,7 @@ export const ZONES = [
       { name: "Project three", tag: "Year" },
       { name: "Project four", tag: "Year" }
     ],
-    todo: "Placeholder names. One toy appears per item, so adding or removing here changes the chest."
+    todo: "Placeholder names. What is actually in the chest is the CHEST list at the bottom of this file."
   },
 
   {
@@ -93,17 +93,32 @@ export const ZONES = [
   }
 ];
 
-/* What is written on the whiteboard in the investing scene. Tap the board
-   itself to read it. Long lines wrap to the board on their own. */
+/* Both sides of the whiteboard. Tap the board to read it, tap again and it
+   turns over. Long lines wrap to the board on their own. */
 export const BOARD = {
-  heading: "WHAT ACTUALLY MOVES IT",
-  questions: [
-    "AI BUBBLE POP?",
-    "MORE COMPUTE = BETTER OUTCOMES?",
-    "WHO PAYS FOR THE DATACENTRE?",
-    "RATES DOWN - THEN WHAT?"
-  ]
+  front: {
+    heading: "WHAT ACTUALLY MOVES IT",
+    lines: [
+      "AI BUBBLE POP?",
+      "MORE COMPUTE = BETTER OUTCOMES?",
+      "WHO PAYS FOR THE DATACENTRE?",
+      "RATES DOWN - THEN WHAT?"
+    ]
+  },
+  back: {
+    heading: "BEFORE ANY OF IT",
+    lines: [
+      "WHAT MAKES THIS WRONG?",
+      "WHAT IS PRICED IN?",
+      "HOW BIG, AND WHY?",
+      "WHEN DO I ADMIT IT?"
+    ]
+  }
 };
+
+/* What is in the toy chest, in order. Known shapes: coin, football, perfume,
+   rocket, cube, ball, controller, brush. */
+export const CHEST = ["coin", "football", "perfume", "cube"];
 
 /* The hourglass on the centre island — one grain of sand per visit, which is
    where this site started. `keepAz` stops the camera swinging round, since an
