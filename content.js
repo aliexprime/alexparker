@@ -120,19 +120,19 @@ export const ZONES = [
   }
 ];
 
-/* The jar on the centre island. One grain of sand per visit — the original idea
-   this site started from, kept literally. It is a selectable section like any
-   other; `keepAz` stops the camera swinging round, since a jar in the middle of
-   the room has no front to face. */
+/* The hourglass on the centre island. One grain of sand per visit — the
+   original idea this site started from, kept literally. It is a selectable
+   section like any other; `keepAz` stops the camera swinging round, since an
+   hourglass in the middle of the ring has no front to face. */
 export const JAR_ZONE = {
-  id: "jar",
-  label: "The jar",
+  id: "hourglass",
+  label: "The hourglass",
   eyebrow: "Visitors",
   title: "One grain per visit",
   lede: "The site began as a single grain of sand falling. This is what is left of that idea.",
   text: [
-    "Every time someone opens this page a counter ticks over and one more grain lands in the jar. The number in the header is that count.",
-    "The level is logarithmic rather than linear, so it always rises and never quite fills. A jar that filled honestly would have been full for good after a few thousand visits, which is a worse thing to look at."
+    "Every time someone opens this page a counter ticks over and one more grain goes through the neck. The number in the header is that count, and the level in the lower bulb is the same number drawn in sand.",
+    "That level is logarithmic rather than linear, so it always rises and never quite fills. An hourglass that filled honestly would have been full for good after a few thousand visits, which is a worse thing to look at."
   ],
   keepAz: true
 };

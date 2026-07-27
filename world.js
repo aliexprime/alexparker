@@ -970,85 +970,149 @@ function animAbout(group) {
 }
 
 /* =============================================================================
-   Section: the jar
+   Section: the hourglass
+   ---------------------------------------------------------------------------
+   Two bulbs in a frame. The level in the lower bulb is the visitor count; the
+   stream running through the neck is decorative and always moving, so the
+   middle of the ring is never a still object.
 ============================================================================= */
 
-const JAR_R = 0.56;
-const JAR_H = 1.5;
-const JAR_Y = F + 1.32;
+const HG_R      = 0.82;                    // widest radius of a bulb
+const HG_WAIST  = 0.13;                    // radius at the neck
+const HG_BULB   = 1.44;                    // height of one bulb
+const HG_BASE   = F + 0.24;                // inside floor of the lower bulb
+const HG_NECK   = HG_BASE + HG_BULB;
+const HG_TOP    = HG_NECK + HG_BULB;
 
-function buildJar(b, g) {
-  island(b, 3.4, C.baseTop);
-  b.cyl(0, F, 0, 1.3, 1.45, 0.22, 12, C.baseMid);
-  b.cyl(0, F + 0.22, 0, 1.04, 1.16, 0.2, 12, C.edge);
-  b.cyl(0, F + 0.42, 0, 0.66, 0.8, 0.72, 12, C.baseTop);
-  b.cyl(0, F + 1.14, 0, 0.86, 0.68, 0.14, 12, C.edge);
-  b.cyl(0, JAR_Y + JAR_H - 0.04, 0, JAR_R + 0.06, JAR_R + 0.06, 0.1, 12, 0xa8bfc9);
-  b.cyl(0, JAR_Y - 0.07, 0, JAR_R + 0.05, JAR_R + 0.05, 0.08, 12, 0xa8bfc9);
+function buildHourglass(b, g) {
+  island(b, 5.2, C.baseTop);
+
+  // Plinth and cap, kept narrower than the bulbs are wide so the glass is not
+  // swallowed by the woodwork.
+  b.cyl(0, F, 0, 1.14, 1.28, 0.22, 12, C.wood);
+  b.cyl(0, F, 0, 1.24, 1.32, 0.08, 12, C.woodDark);
+  b.cyl(0, HG_TOP + 0.02, 0, 0.96, 0.9, 0.18, 12, C.wood);
+  b.cyl(0, HG_TOP + 0.2, 0, 0.88, 0.92, 0.07, 12, C.woodDark);
+
+  // Three posts holding it together.
+  for (let i = 0; i < 3; i++) {
+    const a = (i / 3) * Math.PI * 2 + 0.4;
+    const px = Math.cos(a) * 0.96, pz = Math.sin(a) * 0.96;
+    b.box(px, F + 0.2, pz, 0.14, HG_TOP - F - 0.18, 0.14, C.woodDark, -a);
+    b.box(px, F + 0.2, pz, 0.19, 0.1, 0.19, C.brass, -a);
+    b.box(px, HG_TOP - 0.1, pz, 0.19, 0.1, 0.19, C.brass, -a);
+  }
+
+  // Brass collars where the glass meets wood, and at the neck.
+  b.cyl(0, HG_BASE - 0.07, 0, HG_R + 0.05, HG_R + 0.05, 0.1, 14, C.brass);
+  b.cyl(0, HG_TOP - 0.03, 0, HG_R + 0.05, HG_R + 0.05, 0.1, 14, C.brass);
+  b.cyl(0, HG_NECK - 0.09, 0, HG_WAIST + 0.07, HG_WAIST + 0.07, 0.18, 10, C.brass);
+
   void g;
 }
 
-/* Set up in the scene section below, since the jar has to be reachable by the
-   visitor-count code as well as by its own animation. */
-let sandCol = null, glassMesh = null, grain = null;
+/* Reachable by the visitor-count code as well as by the animation below. */
+let sandCol = null, grain = null;
 
-function animJar(group) {
+/** The lower bulb tapers, so the sand has to taper with it. */
+function sandGeometry(fill) {
+  const rTop = HG_R + (HG_WAIST - HG_R) * clamp(fill, 0, 1);
+  return new THREE.CylinderGeometry(Math.max(0.09, rTop), HG_R - 0.04, 1, 14);
+}
+
+function animHourglass(group) {
   const ups = [];
+  const glassMat = new THREE.MeshLambertMaterial({
+    color: C.glass, transparent: true, opacity: 0.55,
+    depthWrite: false, side: THREE.DoubleSide
+  });
 
-  sandCol = new THREE.Mesh(
-    new THREE.CylinderGeometry(JAR_R - 0.07, JAR_R - 0.07, 1, 12),
-    new THREE.MeshLambertMaterial({ color: C.sand })
-  );
+  // Sand in the lower bulb — this is the one that means something.
+  sandCol = new THREE.Mesh(sandGeometry(0.2), new THREE.MeshLambertMaterial({ color: C.sand }));
   sandCol.receiveShadow = true;
   sandCol.scale.y = 0.0001;
-  sandCol.position.set(0, JAR_Y, 0);
+  sandCol.position.set(0, HG_BASE, 0);
   group.add(sandCol);
 
-  glassMesh = new THREE.Mesh(
-    new THREE.CylinderGeometry(JAR_R, JAR_R, JAR_H, 12, 1, true),
-    new THREE.MeshLambertMaterial({
-      color: C.glass, transparent: true, opacity: 0.42,
-      depthWrite: false, side: THREE.DoubleSide
-    })
+  // Sand still up top, funnelling into the neck.
+  const topSand = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.44, HG_WAIST + 0.02, 0.52, 14),
+    new THREE.MeshLambertMaterial({ color: C.sand })
   );
-  glassMesh.position.set(0, JAR_Y + JAR_H / 2, 0);
-  group.add(glassMesh);
+  topSand.position.set(0, HG_NECK + 0.26, 0);
+  group.add(topSand);
 
+  // The glass, last so it draws over what is inside it.
+  const lower = new THREE.Mesh(
+    new THREE.CylinderGeometry(HG_WAIST, HG_R, HG_BULB, 14, 1, true), glassMat);
+  lower.position.set(0, HG_BASE + HG_BULB / 2, 0);
+  group.add(lower);
+  const upper = new THREE.Mesh(
+    new THREE.CylinderGeometry(HG_R, HG_WAIST, HG_BULB, 14, 1, true), glassMat);
+  upper.position.set(0, HG_NECK + HG_BULB / 2, 0);
+  group.add(upper);
+
+  // The stream, and grains falling down it so the motion reads at any size.
+  const stream = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.065, 0.09, 1, 8),
+    new THREE.MeshLambertMaterial({ color: C.sandDark })
+  );
+  group.add(stream);
+
+  const grains = [];
+  for (let i = 0; i < 11; i++) {
+    const m = new THREE.Mesh(
+      new THREE.BoxGeometry(0.12, 0.12, 0.12),
+      new THREE.MeshLambertMaterial({ color: i % 3 ? C.sandDark : C.sand })
+    );
+    group.add(m);
+    grains.push(m);
+  }
+
+  // The mound where the stream lands.
+  const mound = new THREE.Mesh(
+    new THREE.ConeGeometry(0.3, 0.19, 12),
+    new THREE.MeshLambertMaterial({ color: C.sandDark })
+  );
+  group.add(mound);
+
+  // This visit's own grain, dropped once the tally finishes climbing.
   grain = new THREE.Mesh(
-    new THREE.BoxGeometry(0.11, 0.11, 0.11),
+    new THREE.BoxGeometry(0.12, 0.12, 0.12),
     new THREE.MeshLambertMaterial({ color: C.sandDark })
   );
   grain.castShadow = true;
   grain.visible = false;
   group.add(grain);
 
-  // Motes hanging in the jar — decorative, and deliberately not tied to the
-  // count, so nothing here implies the number is moving.
-  const motes = [];
-  for (let i = 0; i < 7; i++) {
-    const m = new THREE.Mesh(
-      new THREE.BoxGeometry(0.05, 0.05, 0.05),
-      new THREE.MeshBasicMaterial({ color: C.sandDark, transparent: true, opacity: 0 })
-    );
-    group.add(m);
-    motes.push(m);
-  }
-
   ups.push(function (t, dt, amt) {
-    for (let i = 0; i < motes.length; i++) {
-      const m = motes[i];
-      const p = ((t * 0.11) + i / motes.length) % 1;
-      const a = i * 2.4 + t * 0.25;
-      const r = (0.1 + hash1(i * 3.1) * 0.3) * (JAR_R - 0.12);
-      m.position.set(Math.cos(a) * r, JAR_Y + JAR_H * (0.92 - p * 0.78), Math.sin(a) * r);
-      m.material.opacity = amt * 0.75 * Math.sin(p * Math.PI);
-      m.rotation.set(a, a * 1.4, 0);
+    const top = HG_BASE + sandCol.scale.y;         // surface of the lower sand
+    const drop = Math.max(0.05, HG_NECK - 0.06 - top);
+
+    stream.scale.y = drop;
+    stream.position.set(0, top + drop / 2, 0);
+
+    mound.position.set(0, top + 0.06, 0);
+    mound.scale.setScalar(0.9 + Math.sin(t * 6) * 0.06 * (0.4 + amt));
+
+    // Runs at all times so the middle of the ring is never static, and picks
+    // up when the section is the one being read.
+    const rate = 0.55 + 0.75 * amt;
+    for (let i = 0; i < grains.length; i++) {
+      const p = ((t * rate) + i / grains.length) % 1;
+      const g2 = grains[i];
+      const jitter = 0.035 * p;
+      g2.position.set(
+        Math.sin(i * 5.1 + t * 2) * jitter,
+        HG_NECK - 0.06 - p * drop,
+        Math.cos(i * 3.7 + t * 2) * jitter
+      );
+      g2.rotation.set(t * 2 + i, t * 1.4 + i, 0);
     }
   });
 
   return ups;
 }
-
 /* =============================================================================
    Scene
 ============================================================================= */
@@ -1097,7 +1161,7 @@ const ZONE_BUILD = {
   music:     { build: buildMusic,     anim: animMusic },
   projects:  { build: buildProjects,  anim: animProjects },
   about:     { build: buildAbout,     anim: animAbout },
-  jar:       { build: buildJar,       anim: animJar }
+  hourglass: { build: buildHourglass, anim: animHourglass, always: true }
 };
 
 const zones = [];
@@ -1132,6 +1196,7 @@ function addZone(def, x, z, angle, hitW, hitH) {
     amt: 0,          // 0 asleep, 1 selected — everything animated reads this
     lift: 0,
     focusAz: def.keepAz ? null : angle,
+    always: !!spec.always,
     updaters: spec.anim ? spec.anim(group, def) : []
   };
   hit.userData.zone = zone;
@@ -1144,7 +1209,7 @@ ZONES.forEach(function (def, i) {
   const a = (i / ZONES.length) * Math.PI * 2;
   addZone(def, Math.sin(a) * RING_R, Math.cos(a) * RING_R, a, ISLAND, 3.6);
 });
-addZone(JAR_ZONE, 0, 0, 0, 3.2, 3.8);
+addZone(JAR_ZONE, 0, 0, 0, 4.8, 5.0);
 
 /* =============================================================================
    Camera, controls, picking
@@ -1334,11 +1399,11 @@ function focusZone(zone) {
   // three-quarters rather than flattening into a face-on rectangle.
   if (zone.focusAz !== null) want.az = zone.focusAz + 0.34;
   want.el = portrait ? 0.74 : 0.66;
-  const small = zone.def.id === "jar";
-  want.fitH = portrait ? (small ? 3.6 : 5.6) : (small ? 5.4 : 8.4);
-  want.fitV = portrait ? (small ? 3.0 : 4.6) : (small ? 3.4 : 5.3);
+  const small = zone.def.id === "hourglass";
+  want.fitH = portrait ? (small ? 5.4 : 5.6) : (small ? 7.6 : 8.4);
+  want.fitV = portrait ? (small ? 4.6 : 4.6) : (small ? 5.0 : 5.3);
   want.scale = 1;
-  want.target.set(zone.group.position.x, small ? 1.9 : 1.5, zone.group.position.z);
+  want.target.set(zone.group.position.x, small ? 2.3 : 1.5, zone.group.position.z);
 
   const d = zone.def;
   elEyebrow.textContent = d.eyebrow || "";
@@ -1473,6 +1538,10 @@ let grainFall = false, grainT = 0;
 function startPour(count) {
   total = count;
   fillTarget = fillFor(count);
+  if (sandCol) {
+    sandCol.geometry.dispose();
+    sandCol.geometry = sandGeometry(fillTarget);
+  }
   pourStart = performance.now();
   pouring = true;
 }
@@ -1482,7 +1551,7 @@ function setCounter(v) { counterEl.textContent = Math.round(v).toLocaleString();
 function dropGrain() {
   if (!grain) return;
   grain.visible = true;
-  grain.position.set(0, 4.1, 0);
+  grain.position.set(0, HG_NECK - 0.06, 0);
   grainT = 0;
   grainFall = true;
 }
@@ -1496,12 +1565,12 @@ function resize() {
   cssH = Math.max(1, window.innerHeight);
 
   // The whole pixel-art effect: render small, let CSS scale it up.
-  const div = cssW < 700 ? 1.7 : 2.3;
-  const w = clamp(Math.round(cssW / div), 240, 820);
+  const div = cssW < 700 ? 1.35 : 1.6;
+  const w = clamp(Math.round(cssW / div), 300, 1400);
   const h = Math.max(1, Math.round(w * (cssH / cssW)));
   renderer.setSize(w, h, false);
 
-  const shadowRes = cssW < 700 ? 512 : 1024;
+  const shadowRes = cssW < 700 ? 1024 : 2048;
   if (sun.shadow.mapSize.x !== shadowRes) {
     sun.shadow.mapSize.set(shadowRes, shadowRes);
     if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
@@ -1554,7 +1623,7 @@ function frame(now) {
     zone.lift += (liftTo - zone.lift) * ease;
     zone.group.position.y = zone.lift;
 
-    if (zone.amt > 0.002 || selected) {
+    if (zone.always || zone.amt > 0.002 || selected) {
       for (const u of zone.updaters) u(t, dt, zone.amt);
     }
   }
@@ -1563,20 +1632,20 @@ function frame(now) {
   if (pouring && sandCol) {
     const p = (now - pourStart) / 1800;
     const e = p >= 1 ? 1 : 1 - Math.pow(1 - p, 3);
-    const fillH = fillTarget * JAR_H * e;
+    const fillH = fillTarget * HG_BULB * e;
     setCounter(total * e);
     sandCol.scale.y = Math.max(0.0001, fillH);
-    sandCol.position.y = JAR_Y + fillH / 2;
+    sandCol.position.y = HG_BASE + fillH / 2;
     if (p >= 1) { pouring = false; setCounter(total); dropGrain(); }
   }
 
   if (grainFall && grain) {
     grainT += dt;
-    const landY = JAR_Y + fillTarget * JAR_H + 0.06;
-    const y = 4.1 - 9.0 * grainT * grainT;
+    const landY = HG_BASE + sandCol.scale.y + 0.07;
+    const y = (HG_NECK - 0.06) - 4.2 * grainT * grainT;
     if (y <= landY) {
       grain.position.set(0, landY, 0);
-      if (grainT > 1.5) { grain.visible = false; grainFall = false; }
+      if (grainT > 1.4) { grain.visible = false; grainFall = false; }
     } else {
       grain.position.set(0, y, 0);
       grain.rotation.x += dt * 6;
