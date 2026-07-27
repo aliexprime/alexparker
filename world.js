@@ -503,6 +503,8 @@ const BED_X = -0.35, BED_Z = 0.15;
 const CHART_Y = F + 0.42;
 const CHART_ROW_Y = F + 0.43;
 const CHART_ROW_STEP = 0.085;
+// Where the head end of the bed hinges, and how far it sits up.
+const BED_HINGE_Z = BED_Z - 0.32, BED_HINGE_Y = F + 0.54;
 
 function buildRLDatix(b, g) {
   island(b, ISLAND, C.clinFloor);
@@ -526,9 +528,7 @@ function buildRLDatix(b, g) {
   }
   b.box(bx, frameY, bz, 1.06, 0.1, 2.24, C.bedFrame);
   b.box(bx, frameY + 0.1, bz + 0.35, 1.0, 0.17, 1.5, C.mattress);
-  b.box(bx, frameY + 0.1, bz - 0.62, 1.0, 0.2, 0.62, C.mattress);
-  b.box(bx, frameY + 0.3, bz - 0.92, 1.0, 0.18, 0.42, C.mattress);
-  b.box(bx, frameY + 0.48, bz - 1.0, 0.66, 0.1, 0.3, C.paper);
+  // The head end articulates — see animRLDatix — so it is not drawn here.
   b.box(bx, frameY + 0.27, bz + 0.62, 1.02, 0.07, 1.0, C.blanket);
   b.box(bx, frameY + 0.27, bz + 1.06, 1.02, 0.09, 0.16, C.blanket2);
   b.box(bx, frameY, bz - 1.2, 1.06, 0.5, 0.07, C.metal);
@@ -598,8 +598,29 @@ function ecgWave(p) {
   return 0;
 }
 
+let raiseBed = null, spikeVitals = null;
+
 function animRLDatix(group) {
   const ups = [];
+
+  // The head end of the bed, on its hinge. Touch the bed and it sits up.
+  const back = new THREE.Group();
+  back.position.set(BED_X, BED_HINGE_Y, BED_HINGE_Z);
+  group.add(back);
+  // Measured off the hinge, which sits at the base of the mattress, so these
+  // land exactly where the flat bed used to be drawn.
+  back.add(part(function (b) {
+    b.box(0, 0, -0.3, 1.0, 0.2, 0.62, C.mattress);
+    b.box(0, 0.2, -0.6, 1.0, 0.18, 0.42, C.mattress);
+    b.box(0, 0.38, -0.68, 0.66, 0.1, 0.3, C.paper);
+  }));
+
+  let bedUp = 0, bedTo = 0;
+  raiseBed = function () { bedTo = bedTo > 0.5 ? 0 : 1; touched(); };
+  ups.push(function (t, dt) {
+    bedUp += (bedTo - bedUp) * (1 - Math.pow(0.02, dt));
+    back.rotation.x = bedUp * 0.62;
+  });
 
   // Vitals trace on the headwall, travelling right to left.
   const trace = new THREE.Group();
@@ -612,10 +633,15 @@ function animRLDatix(group) {
     trace.add(m);
     bars.push(m);
   }
+  // Touching the monitor runs the trace hot for a few seconds.
+  let spike = 0;
+  spikeVitals = function () { spike = 1; touched(); };
   ups.push(function (t, dt, amt, idle) {
-    const a = Math.max(amt, idle);
+    spike = Math.max(0, spike - dt * 0.22);
+    const a = Math.min(1, Math.max(amt, idle) + spike);
     for (let i = 0; i < bars.length; i++) {
-      bars[i].position.y = ecgWave(t * 0.75 - i * 0.055) * 0.10 * a;
+      bars[i].position.y = ecgWave(t * (0.75 + spike * 1.5) - i * 0.055)
+                         * (0.10 + spike * 0.05) * a;
     }
   });
 
@@ -662,14 +688,20 @@ function animRLDatix(group) {
 const BOARD_X = 1.65, BOARD_Z = -2.95, BOARD_W = 3.5, BOARD_H = 2.15;
 const BOARD_Y = F + 1.55;
 
+/* Both doors swing, so both boxes are shells with something inside, and the
+   doors themselves are separate meshes built in animInvesting. Hinged on their
+   right-hand edge, which is the side with room to swing into. */
+const VAULT_X = -2.55, VAULT_Z = -0.9;
+const SAFE_X = -2.5, SAFE_Z = 1.15;
+
 /* The screen on the desk, the other thing here worth looking at on its own.
    These follow from what monitor() draws, so they and the geometry can never
    drift: the lit panel starts 0.28 above the desk and is inset from the bezel. */
 const SCR_X = 0.15, SCR_W = 0.95, SCR_H = 0.64;
 const SCR_Y = F + 0.8 + 0.28 + SCR_H / 2;
 const SCR_Z = 0.593;
-const CHART_Y0 = SCR_Y - SCR_H / 2 + 0.2;    // where the curve stands
-const CHART_H = 0.3;                          // and how tall it gets
+const CHART_Y0 = SCR_Y - SCR_H / 2 + 0.09;   // where the curve stands
+const CHART_H = 0.42;                         // and how tall it gets
 
 /* One equity curve, written down rather than rolled: a grind up, a drawdown
    that takes back most of it, then a recovery to a new high. The same shape
@@ -684,26 +716,45 @@ function equity(u) {
 function buildInvesting(b, g) {
   island(b, ISLAND, C.invFloor);
 
-  const vx = -2.55, vz = -0.9;
-  b.box(vx, F, vz, 1.9, 2.0, 0.95, C.vaultDark);
-  b.box(vx, F + 0.05, vz + 0.5, 1.7, 1.85, 0.06, C.vault);
-  b.cylC(vx, F + 0.98, vz + 0.56, 0.62, 0.62, 0.14, 10, C.vault, Math.PI / 2, 0, 0);
-  b.cylC(vx, F + 0.98, vz + 0.64, 0.5, 0.5, 0.05, 10, C.vaultDark, Math.PI / 2, 0, 0);
-  b.cylC(vx, F + 0.98, vz + 0.69, 0.12, 0.12, 0.08, 8, C.brass, Math.PI / 2, 0, 0);
+  // The vault: a shell with something inside it, because the door opens.
+  const vx = VAULT_X, vz = VAULT_Z;
+  b.box(vx, F, vz - 0.42, 1.9, 2.0, 0.11, C.vaultDark);          // back
+  b.box(vx - 0.9, F, vz, 0.1, 2.0, 0.95, C.vaultDark);           // sides
+  b.box(vx + 0.9, F, vz, 0.1, 2.0, 0.95, C.vaultDark);
+  b.box(vx, F + 1.9, vz, 1.9, 0.1, 0.95, C.vaultDark);           // lid
+  b.box(vx, F, vz, 1.9, 0.1, 0.95, C.vaultDark);                 // floor
+  b.box(vx, F + 2.0, vz, 2.0, 0.1, 1.05, C.vault);               // cornice
+  for (const sy of [F + 0.68, F + 1.28]) {
+    b.box(vx, sy, vz + 0.02, 1.66, 0.05, 0.78, 0x3d444a);        // shelves
+  }
+  // What is on the shelves. Gold on the bottom two, paper on the top.
+  for (let i = 0; i < 3; i++) {
+    b.box(vx - 0.5 + i * 0.5, F + 0.1, vz, 0.34, 0.12, 0.5, C.brass, 0.1 * i);
+    b.box(vx - 0.5 + i * 0.5, F + 0.22, vz - 0.02, 0.3, 0.1, 0.44, C.brass, -0.08 * i);
+  }
+  for (let i = 0; i < 3; i++) {
+    b.box(vx - 0.48 + i * 0.48, F + 0.73, vz, 0.36, 0.13, 0.46, C.brass, -0.06 * i);
+  }
   for (let i = 0; i < 4; i++) {
-    b.boxC(vx, F + 0.98, vz + 0.69, 0.72, 0.055, 0.055, C.brass, 0, 0, (i * Math.PI) / 4);
+    b.box(vx - 0.6 + i * 0.4, F + 1.33, vz, 0.3, 0.16, 0.4, C.money, 0.12 * i);
+    b.box(vx - 0.6 + i * 0.4, F + 1.4, vz, 0.32, 0.05, 0.2, 0xd8cfae, 0.12 * i);
   }
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2 + 0.4;
-    b.boxC(vx + Math.cos(a) * 0.74, F + 0.98 + Math.sin(a) * 0.74, vz + 0.53, 0.08, 0.08, 0.06, C.brass);
-  }
-  b.box(vx, F + 2.0, vz, 2.0, 0.1, 1.05, C.vault);
 
-  b.box(-2.5, F, 1.15, 0.95, 1.0, 0.8, C.safe);
-  b.box(-2.5, F + 0.07, 1.53, 0.8, 0.86, 0.06, 0x5a636a);
-  b.cylC(-2.36, F + 0.5, 1.59, 0.12, 0.12, 0.06, 8, C.brass, Math.PI / 2, 0, 0);
-  b.box(-2.76, F + 0.46, 1.57, 0.05, 0.28, 0.05, C.brass);
-  crate(b, -2.5, F + 1.0, 1.15, 0.34, 0.3);
+  // The safe, same idea at a smaller size.
+  const sx = SAFE_X, sz = SAFE_Z;
+  b.box(sx, F, sz - 0.32, 0.95, 1.0, 0.16, C.safe);              // back
+  b.box(sx - 0.44, F, sz, 0.07, 1.0, 0.8, C.safe);               // sides
+  b.box(sx + 0.44, F, sz, 0.07, 1.0, 0.8, C.safe);
+  b.box(sx, F + 0.93, sz, 0.95, 0.07, 0.8, C.safe);              // lid
+  b.box(sx, F, sz, 0.95, 0.07, 0.8, C.safe);                     // floor
+  b.box(sx, F + 0.46, sz + 0.02, 0.78, 0.04, 0.62, 0x4d565d);    // shelf
+  for (let i = 0; i < 5; i++) {
+    b.cyl(sx - 0.22, F + 0.07 + i * 0.045, sz, 0.1, 0.1, 0.045, 8, C.brass);
+    b.cyl(sx + 0.02, F + 0.07 + i * 0.045, sz - 0.06, 0.1, 0.1, 0.045, 8, C.brass);
+  }
+  b.box(sx + 0.16, F + 0.5, sz, 0.28, 0.12, 0.36, C.paper, 0.2);
+  b.box(sx - 0.14, F + 0.5, sz + 0.04, 0.3, 0.09, 0.38, C.money, -0.14);
+  crate(b, SAFE_X, F + 1.0, SAFE_Z, 0.34, 0.3);
 
   const topY = desk(b, 0.35, 0.75, 2.0, 1.0, 0, C.wood);
   monitor(b, g, SCR_X, topY, 0.55, 1.02, 0.7, 0, 0x14332a);
@@ -720,7 +771,7 @@ function buildInvesting(b, g) {
     }
   }
   let fy = CHART_Y0 - 0.055;
-  for (const line of SCREEN.lines) {
+  for (const line of SCREEN.lines || []) {
     textMid(b, line, SCR_X, fy, SCR_Z, 0.008, 0x4e9c7d);
     fy -= 0.075;
   }
@@ -782,9 +833,54 @@ function buildBoardFace(b, face) {
 
 let boardPivot = null;
 let boardTurned = 0;        // 0 front, 1 back
+let vaultOpen = 0, safeOpen = 0;   // 0 shut, 1 swung wide
 
 function animInvesting(group) {
   const ups = [];
+
+  // The vault door. Hinged on its right edge and swung toward the middle of
+  // the room, which is the only direction with nothing in the way.
+  const vaultDoor = new THREE.Group();
+  vaultDoor.position.set(VAULT_X + 0.85, F + 0.06, VAULT_Z + 0.44);
+  group.add(vaultDoor);
+  const vd = new Builder();
+  vd.box(-0.85, 0, 0, 1.7, 1.84, 0.13, C.vault);
+  vd.cylC(-0.85, 0.92, 0.09, 0.62, 0.62, 0.14, 10, C.vault, Math.PI / 2, 0, 0);
+  vd.cylC(-0.85, 0.92, 0.17, 0.5, 0.5, 0.05, 10, C.vaultDark, Math.PI / 2, 0, 0);
+  vd.cylC(-0.85, 0.92, 0.22, 0.12, 0.12, 0.08, 8, C.brass, Math.PI / 2, 0, 0);
+  for (let i = 0; i < 4; i++) {
+    vd.boxC(-0.85, 0.92, 0.22, 0.72, 0.055, 0.055, C.brass, 0, 0, (i * Math.PI) / 4);
+  }
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 + 0.4;
+    vd.boxC(-0.85 + Math.cos(a) * 0.74, 0.92 + Math.sin(a) * 0.74, 0.06,
+            0.08, 0.08, 0.06, C.brass);
+  }
+  // Bolts along the hinge edge, which only show once it is open.
+  for (let i = 0; i < 5; i++) {
+    vd.cylC(-1.66, 0.24 + i * 0.35, 0, 0.055, 0.055, 0.26, 6, C.metal, 0, Math.PI / 2, 0);
+  }
+  vaultDoor.add(solidMesh(vd));
+
+  // And the safe door, the same trick a size down.
+  const safeDoor = new THREE.Group();
+  safeDoor.position.set(SAFE_X + 0.4, F + 0.06, SAFE_Z + 0.38);
+  group.add(safeDoor);
+  const sd = new Builder();
+  sd.box(-0.4, 0, 0, 0.8, 0.86, 0.08, 0x5a636a);
+  sd.cylC(-0.26, 0.44, 0.07, 0.12, 0.12, 0.06, 8, C.brass, Math.PI / 2, 0, 0);
+  sd.cylC(-0.26, 0.44, 0.1, 0.05, 0.05, 0.03, 6, C.vaultDark, Math.PI / 2, 0, 0);
+  sd.box(-0.66, 0.3, 0.05, 0.05, 0.28, 0.05, C.brass);
+  for (let i = 0; i < 3; i++) {
+    sd.cylC(-0.78, 0.18 + i * 0.26, 0, 0.04, 0.04, 0.18, 6, C.metal, 0, Math.PI / 2, 0);
+  }
+  safeDoor.add(solidMesh(sd));
+
+  ups.push(function (t, dt) {
+    const k = 1 - Math.pow(0.004, dt);
+    vaultDoor.rotation.y += (vaultOpen * 1.5 - vaultDoor.rotation.y) * k;
+    safeDoor.rotation.y += (safeOpen * 1.45 - safeDoor.rotation.y) * k;
+  });
 
   // The panel, hung between the two posts so it can be turned over.
   boardPivot = new THREE.Group();
@@ -857,6 +953,9 @@ function animInvesting(group) {
 ============================================================================= */
 
 const BAG_X = -2.85, BAG_Z = -1.5;
+// The dummy on the mat. Rolls about its own long axis when thrown, so it is
+// built around a pivot at its middle rather than on the floor.
+const DUM_X = 0.9, DUM_Z = 0.4, DUM_RY = -0.5, DUM_Y = F + 0.27;
 
 function buildBJJ(b, g) {
   island(b, ISLAND, 0xdcd6c8);
@@ -908,17 +1007,8 @@ function buildBJJ(b, g) {
   b.cyl(1.0, F + 0.5, 3.0, 0.09, 0.09, 0.28, 8, 0x7fb0c4);
   b.cyl(1.0, F + 0.78, 3.0, 0.05, 0.05, 0.06, 8, C.metalDark);
 
-  // A dummy left out on the mat, mid-round.
-  const dx = 0.9, dz = 0.4, dry = -0.5;
-  b.box(dx, F + 0.1, dz, 0.5, 0.34, 1.1, C.bagLeather, dry);
-  const [hx, hz] = loc(dx, dz, dry, 0, -0.72);
-  b.rock(hx, F + 0.27, hz, 0.22, C.bagDark);
-  for (const side of [-1, 1]) {
-    const [ax, az] = loc(dx, dz, dry, side * 0.42, -0.3);
-    b.boxC(ax, F + 0.25, az, 0.2, 0.2, 0.72, C.bagLeather, 0, dry, 0);
-  }
-  const [lgx, lgz] = loc(dx, dz, dry, 0, 0.86);
-  b.boxC(lgx, F + 0.25, lgz, 0.42, 0.22, 0.6, C.bagDark, 0, dry, 0);
+  // The dummy is left out on the mat, and gets thrown when you touch it, so
+  // it is built in animBJJ rather than here.
 
   // Spare mats stacked in the corner.
   for (let i = 0; i < 3; i++) {
@@ -927,6 +1017,8 @@ function buildBJJ(b, g) {
   pottedPlant(b, 2.8, 2.6, 1.0);
   void g;
 }
+
+let hitBag = null, throwDummy = null;
 
 function animBJJ(group) {
   // The bag hangs off the arm and swings, on two frequencies so it never looks
@@ -941,10 +1033,59 @@ function animBJJ(group) {
     b.cyl(0, -0.34, 0, 0.28, 0.28, 0.12, 10, C.bagDark);
   }));
 
+  // A struck bag swings hard and then settles, so the hit decays rather than
+  // being another steady sine on top of the idle one.
+  let hit = 0, hitAt = 0;
+  hitBag = function () { hit = 1; hitAt = 0; touched(); };
+
+  // The dummy, on a pivot through its middle so a throw rolls it rather than
+  // pushing it through the mat.
+  const dummy = new THREE.Group();
+  dummy.position.set(DUM_X, DUM_Y, DUM_Z);
+  dummy.rotation.y = DUM_RY;
+  group.add(dummy);
+  const roll = new THREE.Group();
+  dummy.add(roll);
+  roll.add(part(function (b) {
+    b.box(0, -0.17, 0, 0.5, 0.34, 1.1, C.bagLeather);            // torso
+    b.rock(0, 0, -0.72, 0.22, C.bagDark);                        // head
+    for (const side of [-1, 1]) {
+      b.boxC(side * 0.42, -0.02, -0.3, 0.2, 0.2, 0.72, C.bagLeather);
+    }
+    b.boxC(0, -0.02, 0.86, 0.42, 0.22, 0.6, C.bagDark);          // legs
+  }));
+
+  let rollFrom = 0, rollTo = 0, rollT = 1;
+  throwDummy = function () {
+    rollFrom = rollTo;
+    rollTo += Math.PI;              // over onto its other side, every time
+    rollT = 0;
+    touched();
+  };
+
   return [function (t, dt, amt, idle) {
     const a = Math.max(amt, idle);
-    pivot.rotation.x = a * (Math.sin(t * 2.1) * 0.16 + Math.sin(t * 1.31 + 1.2) * 0.06);
-    pivot.rotation.z = a * Math.sin(t * 1.7 + 0.6) * 0.05;
+    if (hit > 0.001) {
+      hitAt += dt;
+      hit = Math.max(0, 1 - hitAt / 3.4);
+    }
+    const swing = a * (Math.sin(t * 2.1) * 0.16 + Math.sin(t * 1.31 + 1.2) * 0.06);
+    pivot.rotation.x = swing - hit * hit * Math.sin(hitAt * 7.4) * 0.62;
+    pivot.rotation.z = a * Math.sin(t * 1.7 + 0.6) * 0.05
+                     - hit * hit * Math.sin(hitAt * 5.1 + 0.7) * 0.16;
+
+    if (rollT < 1) {
+      rollT = Math.min(1, rollT + dt * 0.95);
+      // Slow at both ends, quick through the middle — a body being turned over.
+      const e = rollT < 0.5 ? 2 * rollT * rollT : 1 - Math.pow(-2 * rollT + 2, 2) / 2;
+      roll.rotation.z = rollFrom + (rollTo - rollFrom) * e;
+      roll.position.y = Math.sin(rollT * Math.PI) * 0.24;
+    } else {
+      roll.rotation.z = rollTo;
+      roll.position.y = 0;
+    }
+    // Settling breath, so it is never completely dead on the mat.
+    roll.rotation.x = a * Math.sin(t * 0.8) * 0.02;
   }];
 }
 
@@ -1030,6 +1171,8 @@ function buildMusic(b, g) {
   pottedPlant(b, -2.9, 2.4, 1.15);
 }
 
+let spinDecks = null, burstMeters = null;
+
 function animMusic(group) {
   const ups = [];
   const platters = [];
@@ -1059,9 +1202,13 @@ function animMusic(group) {
     group.add(p);
     platters.push(p);
   }
+  // Touching a deck spins it up to playing speed for a while.
+  let spun = 0;
+  spinDecks = function () { spun = 1; touched(); };
   ups.push(function (t, dt, amt, idle) {
-    const a = Math.max(amt, idle);
-    for (const p of platters) p.rotation.y += dt * (0.35 + 3.1 * a);
+    spun = Math.max(0, spun - dt * 0.09);
+    const a = Math.min(1, Math.max(amt, idle) + spun);
+    for (const p of platters) p.rotation.y += dt * (0.35 + 3.1 * a + spun * 3.4);
   });
 
   // Mixer meters.
@@ -1075,11 +1222,15 @@ function animMusic(group) {
     meterRoot.add(m);
     meters.push(m);
   }
+  // Touching the mixer pushes everything into the red for a moment.
+  let burst = 0;
+  burstMeters = function () { burst = 1; touched(); };
   ups.push(function (t, dt, amt, idle) {
-    const a = Math.max(amt, idle);
+    burst = Math.max(0, burst - dt * 0.35);
+    const a = Math.min(1, Math.max(amt, idle) + burst);
     for (let i = 0; i < meters.length; i++) {
-      const level = walk(t * 3.4 + i * 5.1);
-      meters[i].scale.y = 0.02 + level * 0.1 * a;
+      const level = walk(t * (3.4 + burst * 5) + i * 5.1);
+      meters[i].scale.y = 0.02 + (level * 0.1 + burst * 0.07) * a;
     }
   });
 
@@ -1368,6 +1519,8 @@ function dogHead(b) {
   }
 }
 
+let petDog = null, toggleLamp = null;
+
 function animAbout(group, def, zone) {
   const ups = [];
   const topY = ABOUT_TOP;
@@ -1398,17 +1551,24 @@ function animAbout(group, def, zone) {
   });
   tailPivot.add(tail);
 
+  // Touching him is worth something on its own: he perks right up for a while
+  // and the tail goes properly, then he settles back to whatever the scene is
+  // doing.
+  let pet = 0;
+  petDog = function () { pet = 1; touched(); };
+
   ups.push(function (t, dt, amt, idle) {
-    const a = Math.max(amt, idle);
-    const breath = Math.sin(t * 1.5) * 0.5 + 0.5;
-    body.scale.set(1 + breath * 0.02, 1 + breath * 0.025, 1);
+    pet = Math.max(0, pet - dt * 0.16);
+    const a = Math.min(1, Math.max(amt, idle) + pet);
+    const breath = Math.sin(t * (1.5 + pet * 2.4)) * 0.5 + 0.5;
+    body.scale.set(1 + breath * 0.02, 1 + breath * (0.025 + pet * 0.03), 1);
     // Asleep his chin is down on his paws; awake his head comes up and he
     // has a look around.
-    neck.rotation.x = 0.72 - 0.8 * a + Math.sin(t * 0.9) * 0.03;
-    neck.rotation.y = Math.sin(t * 0.55 + 1.2) * 0.26 * a;
+    neck.rotation.x = 0.72 - 0.8 * a + Math.sin(t * 0.9) * 0.03 - pet * 0.16;
+    neck.rotation.y = Math.sin(t * (0.55 + pet * 1.6) + 1.2) * 0.26 * a;
     neck.rotation.z = Math.sin(t * 0.37) * 0.05 * a;
     // A slow sweep on the cushion most of the time, a proper wag when watched.
-    tailPivot.rotation.y = Math.sin(t * (2.0 + 6.5 * a)) * (0.1 + 0.5 * a);
+    tailPivot.rotation.y = Math.sin(t * (2.0 + 6.5 * a + pet * 9)) * (0.1 + 0.5 * a);
     tailPivot.rotation.x = -0.1 - 0.55 * a;
   });
   void zone;
@@ -1417,10 +1577,13 @@ function animAbout(group, def, zone) {
   const bulb = part(b => b.rock(0, 0, 0, 0.09, C.lampGlow), true);
   bulb.position.set(-0.94, topY + 0.42, 0.3);
   group.add(bulb);
+  let lampOn = 1, lampLit = 1;
+  toggleLamp = function () { lampOn = lampOn ? 0 : 1; touched(); };
   ups.push(function (t, dt, amt, idle) {
+    lampLit += (lampOn - lampLit) * (1 - Math.pow(0.004, dt));
     const a = Math.max(amt, idle);
     const s = 0.55 + a * (0.75 + Math.sin(t * 2.6) * 0.07 + Math.sin(t * 7.3) * 0.03);
-    bulb.scale.setScalar(s);
+    bulb.scale.setScalar(0.12 + s * lampLit);
   });
 
   // Steam off the mug.
@@ -1464,11 +1627,16 @@ const HG_BASE   = F + 0.24;                // inside floor of the lower bulb
 const HG_NECK   = HG_BASE + HG_BULB;
 const HG_TOP    = HG_NECK + HG_BULB;
 
+/* Only the island. The hourglass itself turns when you touch it, so all of it —
+   woodwork, brass and glass — is built into a group of its own in
+   animHourglass, and the ground stays put underneath it. */
 function buildHourglass(b, g) {
   island(b, 5.2, C.baseTop);
+  void g;
+}
 
-  // Plinth and cap, kept narrower than the bulbs are wide so the glass is not
-  // swallowed by the woodwork.
+/** The frame the glass sits in, drawn around its own centre so it can spin. */
+function hourglassFrame(b) {
   b.cyl(0, F, 0, 1.14, 1.28, 0.22, 12, C.wood);
   b.cyl(0, F, 0, 1.24, 1.32, 0.08, 12, C.woodDark);
   b.cyl(0, HG_TOP + 0.02, 0, 0.96, 0.9, 0.18, 12, C.wood);
@@ -1487,8 +1655,6 @@ function buildHourglass(b, g) {
   b.cyl(0, HG_BASE - 0.07, 0, HG_R + 0.05, HG_R + 0.05, 0.1, 14, C.brass);
   b.cyl(0, HG_TOP - 0.03, 0, HG_R + 0.05, HG_R + 0.05, 0.1, 14, C.brass);
   b.cyl(0, HG_NECK - 0.09, 0, HG_WAIST + 0.07, HG_WAIST + 0.07, 0.18, 10, C.brass);
-
-  void g;
 }
 
 /* Reachable by the visitor-count code as well as by the animation below. */
@@ -1500,8 +1666,31 @@ function sandGeometry(fill) {
   return new THREE.CylinderGeometry(Math.max(0.09, rTop), HG_R - 0.04, 1, 14);
 }
 
-function animHourglass(group) {
+let spinHourglass = null;
+
+function animHourglass(parentGroup) {
   const ups = [];
+
+  // Everything from here down lives in `group`, which is what turns.
+  const group = new THREE.Group();
+  parentGroup.add(group);
+  group.add(part(hourglassFrame));
+
+  let spinFrom = 0, spinTo = 0, spinT = 1;
+  spinHourglass = function () {
+    spinFrom = group.rotation.y;
+    spinTo = spinFrom + Math.PI * 2;    // one full, heavy turn
+    spinT = 0;
+    touched();
+  };
+  ups.push(function (t, dt) {
+    if (spinT >= 1) return;
+    spinT = Math.min(1, spinT + dt * 0.42);
+    // Quick away, long settle — a heavy thing given a shove.
+    const e = 1 - Math.pow(1 - spinT, 3);
+    group.rotation.y = spinFrom + (spinTo - spinFrom) * e;
+  });
+
   const glassMat = new THREE.MeshLambertMaterial({
     color: C.glass, transparent: true, opacity: 0.55,
     depthWrite: false, side: THREE.DoubleSide
@@ -1688,6 +1877,13 @@ function gateDetail(d, parent) {
   return d;
 }
 
+/** Mark a detail as one that does its thing on the first touch, not the
+    second — doors, throws, anything mechanical. */
+function swings(d) {
+  d.actOnFocus = true;
+  return d;
+}
+
 function refreshGates() {
   for (const d of gatedDetails) {
     d.enabled = d.gate ? (activeDetail === d.gate) : (activeZone === d.gateZone);
@@ -1787,6 +1983,54 @@ ZONES.forEach(function (def, i) {
     addDetail(zone, BOARD_X, BOARD_Y, BOARD_Z, BOARD_W, BOARD_H, 3.05, 1.75, 0.3,
                function () { boardTurned = boardTurned ? 0 : 1; touched(); });
     addDetail(zone, SCR_X, SCR_Y, SCR_Z, SCR_W, SCR_H, 0.66, 0.44, 0.2);
+    swings(addDetail(zone, VAULT_X, F + 1.0, VAULT_Z + 0.45, 1.9, 2.0, 1.9, 1.5, 0.34,
+                     function () { vaultOpen = vaultOpen ? 0 : 1; touched(); }, 0.3));
+    swings(addDetail(zone, SAFE_X, F + 0.5, SAFE_Z + 0.36, 0.95, 1.0, 1.05, 0.8, 0.34,
+                     function () { safeOpen = safeOpen ? 0 : 1; touched(); }, 0.3));
+    addDetail(zone, 2.3, F + 0.62, 1.7, 1.5, 0.7, 1.1, 0.8, 0.45);      // the takings
+  }
+
+  if (def.id === "bjj") {
+    // The two belts are the point of the rack, so this one just frames them.
+    addDetail(zone, 1.35, F + 1.2, -3.05, 2.5, 1.1, 1.5, 0.95, 0.16);
+    swings(addDetail(zone, DUM_X, DUM_Y, DUM_Z, 1.3, 0.8, 1.5, 1.0, 0.42,
+                     function () { if (throwDummy) throwDummy(); }, 1.3));
+    swings(addDetail(zone, BAG_X + 0.78, F + 1.0, BAG_Z, 0.7, 1.6, 1.3, 1.1, 0.36,
+                     function () { if (hitBag) hitBag(); }, 0.7));
+    addDetail(zone, 0.1, F + 0.6, 3.0, 2.2, 0.9, 1.4, 1.0, 0.4);        // gi on the bench
+    addDetail(zone, -2.7, F + 0.17, 2.6, 1.3, 0.5, 0.95, 0.7, 0.4);     // spare mats
+  }
+
+  if (def.id === "music") {
+    swings(addDetail(zone, -0.85, DECK_Y + 0.2, -0.35, 0.85, 0.4, 0.9, 0.6, 0.5,
+                     function () { if (spinDecks) spinDecks(); }, 0.7));
+    swings(addDetail(zone, 0, DECK_Y + 0.13, -0.5, 0.8, 0.22, 0.7, 0.5, 0.55,
+                     function () { if (burstMeters) burstMeters(); }, 0.3));
+    for (const side of [-1, 1]) {
+      addDetail(zone, side * 2.6, F + 1.5, 0.5, 0.9, 1.15, 0.9, 0.8, 0.25);
+    }
+    addDetail(zone, 2.5, F + 0.35, -1.9, 1.1, 0.85, 0.9, 0.7, 0.4);     // record crate
+    addDetail(zone, -2.4, F + 0.85, -1.85, 1.9, 0.55, 1.25, 0.85, 0.45); // the synth
+  }
+
+  if (def.id === "projects") {
+    addDetail(zone, -2.95, F + 0.78, -0.6, 0.9, 1.6, 1.1, 0.95, 0.25);  // the shelf
+    addDetail(zone, 2.85, F + 0.55, -1.1, 1.2, 1.3, 1.0, 0.85, 0.3);    // the crates
+  }
+
+  if (def.id === "about") {
+    swings(addDetail(zone, DOG_X, DOG_Y + 0.35, DOG_Z + 0.2, 1.3, 1.0, 1.35, 0.95, 0.3,
+                     function () { if (petDog) petDog(); }, 1.0));
+    addDetail(zone, -0.35, ABOUT_TOP + 0.22, 0.3, 0.85, 0.6, 0.65, 0.45, 0.3, null, 0.4);
+    swings(addDetail(zone, -0.96, ABOUT_TOP + 0.4, 0.28, 0.5, 0.72, 0.55, 0.5, 0.25,
+                     function () { if (toggleLamp) toggleLamp(); }, 0.35));
+    addDetail(zone, 0.6, ABOUT_TOP + 0.1, 0.38, 0.36, 0.36, 0.34, 0.26, 0.35, null, 0.3);
+    addDetail(zone, -2.95, F + 1.05, -0.5, 0.9, 2.0, 1.3, 1.1, 0.22);   // the shelves
+  }
+
+  if (def.id === "hourglass") {
+    swings(addDetail(zone, 0, HG_BASE + HG_BULB, 0, 1.9, 3.0, 1.9, 1.9, 0.3,
+                     function () { if (spinHourglass) spinHourglass(); }, 1.9));
   }
 
   // The laptop on the booth: one tap to read the screen, a second to leave.
@@ -1800,6 +2044,13 @@ ZONES.forEach(function (def, i) {
   // screen its four lines become tap targets of their own, and each one opens
   // the message form.
   if (def.id === "rldatix") {
+    swings(addDetail(zone, BED_X, F + 0.75, BED_Z - 0.2, 1.1, 0.5, 1.6, 1.1, 0.42,
+                     function () { if (raiseBed) raiseBed(); }, 1.2));
+    addDetail(zone, 2.15, F + 1.28, 1.35, 0.7, 0.5, 0.75, 0.5, 0.3);    // workstation
+    swings(addDetail(zone, BED_X + 0.95, F + 0.7, BED_Z - 1.4, 0.62, 0.46, 0.62, 0.42, 0.2,
+                     function () { if (spikeVitals) spikeVitals(); }, 0.25));
+    addDetail(zone, BED_X - 1.35, F + 1.3, BED_Z - 0.5, 0.5, 0.9, 0.7, 0.6, 0.3);
+    addDetail(zone, -2.95, F + 0.85, -0.42, 0.9, 1.7, 1.1, 0.95, 0.25);  // supply cabinet
     const chart = addDetail(zone, BED_X, CHART_Y, BED_Z + 1.42, 0.82, 0.86,
                             0.55, 0.46, 0.24, null, 0.1);
     CLIPBOARD.lines.forEach(function (line, k) {
@@ -2035,7 +2286,7 @@ function focusDetail(d) {
   // opens the form and the view stays where it is.
   if (d.instant) { if (d.act) d.act(); touched(); return; }
   // Already looking at it? Then the tap means "do the thing" — turn the board,
-  // open the project.
+  // open the project, swing the door again.
   if (activeDetail === d && d.act) { d.act(); return; }
   if (!activeZone) azBeforeFocus = want.az;
   activeZone = d.zone;
@@ -2058,6 +2309,11 @@ function focusDetail(d) {
     want.target.copy(d.pos);
     want.target.y += FOCUS_LIFT;
   }
+
+  // Things that do something mechanical — a safe door, a dummy on the mat —
+  // should do it the moment you touch them, not on a second tap. Tapping again
+  // runs it again, through the branch above.
+  if (d.actOnFocus && d.act) d.act();
 
   document.body.classList.add("focused");
   refreshGates();
@@ -2281,9 +2537,12 @@ function resize() {
   cssW = Math.max(1, window.innerWidth);
   cssH = Math.max(1, window.innerHeight);
 
-  // The whole pixel-art effect: render small, let CSS scale it up.
-  const div = cssW < 700 ? 1.35 : 1.6;
-  const w = clamp(Math.round(cssW / div), 300, 1400);
+  // The whole pixel-art effect: render small, let CSS scale it up. The divisor
+  // is the only dial that matters — smaller means finer pixels and more of
+  // them. Keep the two in step so a phone is not noticeably chunkier than a
+  // desktop, and let big displays run further before the cap bites.
+  const div = cssW < 700 ? 1.04 : 1.23;
+  const w = clamp(Math.round(cssW / div), 320, 1700);
   const h = Math.max(1, Math.round(w * (cssH / cssW)));
   renderer.setSize(w, h, false);
 
