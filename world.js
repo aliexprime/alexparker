@@ -15,7 +15,8 @@
 ============================================================================= */
 
 import * as THREE from "./vendor/three.module.min.js";
-import { ZONES, JAR_ZONE, BOARD, CHEST, CLIPBOARD, CONTACT, SCREEN } from "./content.js";
+import { ZONES, JAR_ZONE, BOARD, CHEST, CLIPBOARD, CONTACT, SCREEN, MUSIC_LINK }
+  from "./content.js";
 
 /* ---- Palette ---------------------------------------------------------------
    Muted and warm, so a room full of colour still sits quietly on paper. */
@@ -953,6 +954,11 @@ function animBJJ(group) {
 
 const DECK_Y = F + 0.92;
 
+/* The laptop lid on the booth: a focus target, and the way out to SoundCloud.
+   The lid leans back, so anything written on it has to lean back with it — the
+   screen text is a separate mesh in animMusic rather than part of the island. */
+const LAP_X = 0.05, LAP_Y = DECK_Y + 0.32, LAP_Z = -0.03, LAP_TILT = -0.24;
+
 function buildMusic(b, g) {
   island(b, ISLAND, 0xcfc7b6);
   b.cyl(0, F + 0.05, 0.6, 2.7, 2.7, 0.03, 12, 0xbeb5a2);
@@ -977,9 +983,9 @@ function buildMusic(b, g) {
   }
 
   // Laptop at the back of the booth.
-  b.box(0.05, DECK_Y + 0.1, 0.12, 0.6, 0.03, 0.4, C.metal);
-  b.boxC(0.05, DECK_Y + 0.32, -0.06, 0.6, 0.4, 0.03, C.metal, -0.24, 0, 0);
-  g.boxC(0.05, DECK_Y + 0.32, -0.03, 0.53, 0.33, 0.012, 0x25333d, -0.24, 0, 0);
+  b.box(LAP_X, DECK_Y + 0.1, 0.12, 0.6, 0.03, 0.4, C.metal);
+  b.boxC(LAP_X, LAP_Y, -0.06, 0.6, 0.4, 0.03, C.metal, LAP_TILT, 0, 0);
+  g.boxC(LAP_X, LAP_Y, LAP_Z, 0.53, 0.33, 0.012, 0x25333d, LAP_TILT, 0, 0);
 
   // Headphones resting on the corner.
   b.cylC(-1.15, DECK_Y + 0.12, 0.28, 0.16, 0.16, 0.05, 10, 0x33373b, Math.PI / 2, 0, 0);
@@ -1027,6 +1033,19 @@ function buildMusic(b, g) {
 function animMusic(group) {
   const ups = [];
   const platters = [];
+
+  // What is on the laptop screen. Its own group so it can lean back with the
+  // lid; local +z is then straight out of the screen.
+  const lap = new THREE.Group();
+  lap.position.set(LAP_X, LAP_Y, LAP_Z);
+  lap.rotation.x = LAP_TILT;
+  group.add(lap);
+  const lb = new Builder();
+  textMid(lb, MUSIC_LINK.title, 0, 0.12, 0.012, 0.008, C.ledAmber);
+  lb.box(0, 0.05, 0.012, 0.44, 0.008, 0.02, 0x3d5766);
+  textMid(lb, MUSIC_LINK.handle, 0, 0.025, 0.012, 0.0095, C.ledCyan);
+  textMid(lb, MUSIC_LINK.foot, 0, -0.085, 0.012, 0.005, 0x6f8c9b);
+  lap.add(solidMesh(lb));
 
   for (const side of [-1, 1]) {
     const x = side * 0.85;
@@ -1768,6 +1787,13 @@ ZONES.forEach(function (def, i) {
     addDetail(zone, BOARD_X, BOARD_Y, BOARD_Z, BOARD_W, BOARD_H, 3.05, 1.75, 0.3,
                function () { boardTurned = boardTurned ? 0 : 1; touched(); });
     addDetail(zone, SCR_X, SCR_Y, SCR_Z, SCR_W, SCR_H, 0.66, 0.44, 0.2);
+  }
+
+  // The laptop on the booth: one tap to read the screen, a second to leave.
+  if (def.id === "music") {
+    addDetail(zone, LAP_X, LAP_Y, LAP_Z, 0.6, 0.42, 0.4, 0.3, 0.3,
+              function () { window.open(MUSIC_LINK.href, "_blank", "noopener"); },
+              0.12);
   }
 
   // The chart on the end of the bed. Tap it to read it; once it fills the

@@ -41,7 +41,7 @@ export const ZONES = [
   {
     id: "music",
     label: "Music",
-    todo: "No track or set names anywhere yet. They could go on the record sleeves or the laptop screen."
+    todo: "The laptop links out to SoundCloud. Individual track or set names could still go on the record sleeves if you want them named."
   },
 
   {
@@ -83,6 +83,15 @@ export const BOARD = {
 export const SCREEN = {
   title: "PORTFOLIO",
   lines: ["EVERY LINE HAS", "A DRAWDOWN IN IT"]
+};
+
+/* The laptop open on the DJ booth. Tap it to read the screen, tap it again and
+   SoundCloud opens in a new tab. Keep the lines short — the screen is small. */
+export const MUSIC_LINK = {
+  title: "SOUNDCLOUD",
+  handle: "1RESPRAY",
+  foot: "TAP AGAIN TO OPEN",
+  href: "https://soundcloud.com/1respray"
 };
 
 /* What is in the toy chest, in order — one object per project. Each one turns
