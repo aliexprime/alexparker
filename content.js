@@ -34,8 +34,7 @@ export const ZONES = [
 
   {
     id: "bjj",
-    label: "Jiu-jitsu",
-    todo: "The belt rack has both belts on it — zoom in. Nothing names the gym — say if you want it lettered onto the mats or the rack."
+    label: "Jiu-jitsu"
   },
 
   {
@@ -96,9 +95,12 @@ export const MUSIC_LINK = {
   href: "https://soundcloud.com/1respray"
 };
 
-/* What is in the toy chest, in order — one object per project. Each one turns
-   and bobs while the chest is open. Tap one and a label comes up beside it;
-   tap it again and the site opens, if there is one to open.
+/* What is in the toy chest, in order — one object per project. The chest stays
+   shut until it is tapped; once open, each object turns and bobs. Tap one and a
+   label comes up beside it; tap it again and the site opens, if there is one.
+
+   Scentcloud is out for now. Its `perfume` shape is still in makeToy, so
+   putting it back is one entry.
 
    Known shapes: coin, football (AFL), perfume, rocket, cube, ball, controller,
    brush. Add a case to makeToy in world.js for anything else. */
@@ -114,11 +116,6 @@ export const CHEST = [
     title: "HEADSORTAILSHERO.COM",
     lines: [],
     href: "https://headsortailshero.com"
-  },
-  {
-    shape: "perfume",
-    title: "SCENTCLOUD",
-    lines: ["AN APP.", "NOT FINISHED YET."]
   }
 ];
 

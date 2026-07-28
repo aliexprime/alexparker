@@ -94,11 +94,14 @@ const C = {
   aboutFloor:0xe2dbcb,
   rug2:      0xc0ac90,
 
-  // The dog: a sandy ridgeback crossed with a kelpie, in a white bed.
+  // The dog: a sandy ridgeback crossed with a kelpie, in a white bed. `dogPale`
+  // is the lighter sand on his chin and the inside of his ears; `dogSock` is
+  // the actual white, and only four paws and the tip of his tail get it.
   dog:       0xd0a468,
   dogMuzzle: 0xb98a4e,
   dogRidge:  0xba8b50,
   dogPale:   0xe3c99b,
+  dogSock:   0xf4f0e6,
   dogNose:   0x332c27,
   bedRim:    0xfbfaf6,
   bedPad:    0xd9d5ca,
@@ -123,6 +126,20 @@ const _m = new THREE.Matrix4();
 const _e = new THREE.Euler();
 const _c = new THREE.Color();
 
+/* Contact shade. Light never reaches the crease where an object meets the thing
+   under it, and a renderer that only knows about a sun and a sky will happily
+   light that crease as brightly as the rest. So the bottom of everything gets
+   darkened into its own vertex colours as it is built — free at run time,
+   because it is just the colour the vertex was always going to have.
+
+   The falloff is a fixed distance rather than a fraction of the object, since
+   this is a local effect: a wardrobe and a footstool have the same dark skirt
+   at the floor, not skirts in proportion to themselves. Anything shorter than
+   the falloff is left alone — a rug, a sheet of paper, a letter of text has no
+   base to speak of, and grading one end to the other would only look grubby. */
+const AO_DROP = 0.2;      // how dark the very bottom goes
+const AO_RISE = 0.22;     // and over what height it comes back up
+
 class Builder {
   constructor() { this.p = []; this.n = []; this.c = []; }
 
@@ -137,10 +154,24 @@ class Builder {
     const nor = g.attributes.normal.array;
     _c.set(color);
     const r = _c.r, gr = _c.g, b = _c.b;
+
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 1; i < pos.length; i += 3) {
+      if (pos[i] < lo) lo = pos[i];
+      if (pos[i] > hi) hi = pos[i];
+    }
+    const shade = hi - lo >= AO_RISE;
+
     for (let i = 0; i < pos.length; i += 3) {
       this.p.push(pos[i], pos[i + 1], pos[i + 2]);
       this.n.push(nor[i], nor[i + 1], nor[i + 2]);
-      this.c.push(r, gr, b);
+      if (shade) {
+        const up = Math.min(1, (pos[i + 1] - lo) / AO_RISE);
+        const k = 1 - AO_DROP * (1 - up) * (1 - up);
+        this.c.push(r * k, gr * k, b * k);
+      } else {
+        this.c.push(r, gr, b);
+      }
     }
     g.dispose();
     return this;
@@ -379,6 +410,15 @@ function signBoard(b, x, yBottom, z, title, lines, o) {
   return { w: w, h: h + 0.09 };
 }
 
+/* A frequency that changes over time has to be integrated, never multiplied
+   into t. `Math.sin(t * f)` jumps by `t * delta-f` the instant f changes: barely
+   visible in the first few seconds and violent a few minutes in, which is what
+   made the dog judder and the vitals trace tear. Accumulate instead. */
+function phaser(start) {
+  let p = start || 0;
+  return function (dt, freq) { p += dt * freq; return p; };
+}
+
 function hash1(n) {
   const s = Math.sin(n * 127.1) * 43758.5453;
   return s - Math.floor(s);
@@ -442,6 +482,78 @@ function shelf(b, x, z, w, h, ry, seed) {
       bx += bw + 0.012;
     }
   }
+}
+
+/* ---- Books off a shelf ------------------------------------------------------
+
+   A bookcase is the one thing in a room that has an obvious thing to do: knock
+   it and books come out. Each one gets a small pool of loose books that start
+   tucked inside the case and are thrown out on the shelf's own facing when it
+   is touched. They fall under gravity, tumble, and lie where they land. Touch
+   it again and the same books go again — the pool never grows.
+
+   `ry` is the shelf's rotation, so local +z is the way it faces. */
+function bookSpill(group, x, z, ry, w, h, seed) {
+  const r = rng(seed);
+  const books = [];
+  const fwd = [Math.sin(ry), 0, Math.cos(ry)];       // local +z, in world terms
+  const side = [Math.cos(ry), 0, -Math.sin(ry)];     // local +x
+
+  for (let i = 0; i < 5; i++) {
+    const bw = 0.07 + r() * 0.05, bh = 0.2 + r() * 0.1;
+    const m = part(function (b) {
+      b.box(-bw / 2, -bh / 2, -0.12, bw, bh, 0.24, BOOKS[(r() * BOOKS.length) | 0]);
+      b.box(-bw / 2 + 0.012, -bh / 2 + 0.01, -0.115, bw - 0.024, bh - 0.02, 0.235, C.paper);
+    });
+    m.visible = false;
+    group.add(m);
+    books.push({
+      m: m,
+      half: bh / 2,
+      lx: (r() - 0.4) * (w - 0.3),                   // which slot it comes from
+      ly: 0.35 + r() * (h - 0.7),
+      out: 0.55 + r() * 0.85,                        // how hard it is thrown
+      drift: (r() - 0.5) * 0.7,
+      up: 1.1 + r() * 1.1,
+      spin: (r() - 0.5) * 9,
+      tumble: 3 + r() * 5,
+      delay: i * 0.07 + r() * 0.06,
+      t: 0, live: false
+    });
+  }
+
+  function throwOut() {
+    for (const b of books) { b.t = -b.delay; b.live = true; b.m.visible = false; }
+    touched();
+  }
+
+  function update(dt) {
+    for (const b of books) {
+      if (!b.live) continue;
+      b.t += dt;
+      if (b.t < 0) continue;
+      b.m.visible = true;
+      // Straight out of the case, falling, until it reaches the floor.
+      const y = F + b.ly + b.up * b.t - 4.6 * b.t * b.t;
+      const rest = F + 0.02 + b.half * 0.55;
+      const d = b.out * b.t;
+      const s = b.drift * b.t;
+      b.m.position.set(
+        x + fwd[0] * (0.24 + d) + side[0] * (b.lx + s),
+        Math.max(rest, y),
+        z + fwd[2] * (0.24 + d) + side[2] * (b.lx + s)
+      );
+      if (y <= rest) {
+        // Landed: lie flat, and stop.
+        b.m.rotation.set(Math.PI / 2, b.spin, 0);
+        b.live = false;
+      } else {
+        b.m.rotation.set(b.tumble * b.t, b.spin * b.t * 0.4, b.tumble * 0.6 * b.t);
+      }
+    }
+  }
+
+  return { throwOut: throwOut, update: update };
 }
 
 function pottedPlant(b, x, z, scale) {
@@ -571,10 +683,9 @@ function buildRLDatix(b, g) {
   // Tall things live on the side edges only.
   b.box(-2.95, F, -0.7, 0.85, 1.7, 0.55, C.white);
   b.box(-2.95, F + 0.05, -0.42, 0.72, 0.5, 0.04, 0xdde6e7);
-  b.box(-2.95, F + 0.6, -0.42, 0.72, 0.5, 0.04, 0xdde6e7);
   b.box(-2.95, F + 1.15, -0.42, 0.72, 0.44, 0.04, 0xdde6e7);
   b.box(-2.68, F + 0.28, -0.4, 0.1, 0.05, 0.05, C.metal);
-  b.box(-2.68, F + 0.83, -0.4, 0.1, 0.05, 0.05, C.metal);
+  // The middle drawer slides out — see animRLDatix.
 
   b.box(2.95, F, -0.9, 0.62, 0.86, 1.9, C.white);
   b.box(2.95, F + 0.86, -0.9, 0.7, 0.08, 2.0, 0xe4ebec);
@@ -599,6 +710,7 @@ function ecgWave(p) {
 }
 
 let raiseBed = null, spikeVitals = null;
+let openDrawer = null, runDrip = null, reshuffleDash = null;
 
 function animRLDatix(group) {
   const ups = [];
@@ -633,26 +745,50 @@ function animRLDatix(group) {
     trace.add(m);
     bars.push(m);
   }
-  // Touching the monitor runs the trace hot for a few seconds.
+  // The middle drawer of the supply cabinet eases out when the ward is awake.
+  const drawer = part(function (b) {
+    b.box(-2.95, F + 0.6, -0.42, 0.72, 0.5, 0.04, 0xdde6e7);
+    b.box(-2.68, F + 0.83, -0.4, 0.1, 0.05, 0.05, C.metal);
+    b.box(-2.95, F + 0.62, -0.58, 0.66, 0.42, 0.3, 0xeef3f2);   // the tray behind it
+    b.box(-2.95, F + 0.66, -0.6, 0.5, 0.1, 0.2, 0xc9d6d8);      // and what is in it
+  });
+  group.add(drawer);
+  let drawerOut = 0, drawerTo = -1;      // -1 = follow the room, 0/1 = held
+  openDrawer = function () { drawerTo = drawerTo > 0.5 ? 0 : 1; touched(); };
+  ups.push(function (t, dt, amt, idle) {
+    const a = Math.max(amt, idle);
+    const want2 = drawerTo < 0 ? a * (0.6 + Math.sin(t * 0.9) * 0.2) : drawerTo;
+    drawerOut += (want2 - drawerOut) * (1 - Math.pow(0.01, dt));
+    drawer.position.z = drawerOut * 0.34;
+  });
+
+  // Touching the monitor runs the trace hot for a few seconds. A resting
+  // 66 bpm, up to about 110 when it is pushed.
   let spike = 0;
   spikeVitals = function () { spike = 1; touched(); };
+  const pBeat = phaser();
   ups.push(function (t, dt, amt, idle) {
     spike = Math.max(0, spike - dt * 0.22);
     const a = Math.min(1, Math.max(amt, idle) + spike);
+    const beat = pBeat(dt, 1.1 + spike * 0.75);
     for (let i = 0; i < bars.length; i++) {
-      bars[i].position.y = ecgWave(t * (0.75 + spike * 1.5) - i * 0.055)
-                         * (0.10 + spike * 0.05) * a;
+      bars[i].position.y = ecgWave(beat - i * 0.055) * (0.10 + spike * 0.05) * a;
     }
   });
 
-  // A drip working its way down the line.
+  // A drip working its way down the line. Touch the pole and it runs faster
+  // for a while.
   const drop = part(b => b.box(0, -0.025, 0, 0.045, 0.05, 0.045, 0xbcd6e0));
   drop.castShadow = false;
   group.add(drop);
+  let fast = 0;
+  runDrip = function () { fast = 1; touched(); };
+  const pDrip = phaser();
   ups.push(function (t, dt, amt, idle) {
-    drop.visible = Math.max(amt, idle) > 0.4;
+    fast = Math.max(0, fast - dt * 0.14);
+    drop.visible = Math.min(1, Math.max(amt, idle) + fast) > 0.4;
+    const p = pDrip(dt, 0.75 + fast * 2.6) % 1;
     if (!drop.visible) return;
-    const p = (t * 0.75) % 1;
     drop.position.set(BED_X - 1.35, F + 1.28 - p * 0.52, BED_Z - 0.5);
   });
 
@@ -668,11 +804,16 @@ function animRLDatix(group) {
     dash.add(m);
     dashBars.push(m);
   }
+  // Touching the workstation redraws the dashboard on a fresh set of numbers.
+  let seed = 0, shuffle = 0;
+  reshuffleDash = function () { seed += 37.4; shuffle = 1; touched(); };
   ups.push(function (t, dt, amt, idle) {
+    shuffle = Math.max(0, shuffle - dt * 0.8);
     const a = Math.max(amt, idle);
     for (let i = 0; i < dashBars.length; i++) {
-      const h = 0.05 + walk(t * 0.5 + i * 3.7) * 0.26;
-      dashBars[i].scale.y = 0.04 + h * a;
+      const h = 0.05 + walk(t * 0.5 + seed + i * 3.7) * 0.26;
+      // A quick flicker as the new figures come in.
+      dashBars[i].scale.y = 0.04 + h * a * (1 - shuffle * 0.8 * ((i + Math.floor(shuffle * 9)) % 2));
     }
   });
 
@@ -834,9 +975,30 @@ function buildBoardFace(b, face) {
 let boardPivot = null;
 let boardTurned = 0;        // 0 front, 1 back
 let vaultOpen = 0, safeOpen = 0;   // 0 shut, 1 swung wide
+let flickCoin = null, redrawCurve = null;
 
 function animInvesting(group) {
   const ups = [];
+
+  // A coin left spinning on the table with the takings on it.
+  const spinner = part(function (b) {
+    b.cylC(0, 0, 0, 0.11, 0.11, 0.045, 10, C.brass, Math.PI / 2, 0, 0);
+    b.cylC(0, 0, 0.024, 0.07, 0.07, 0.01, 10, 0xe2c274, Math.PI / 2, 0, 0);
+  });
+  spinner.position.set(2.0, F + 0.49 + 7 * 0.045 + 0.06, 1.5);
+  group.add(spinner);
+  const COIN_Y = F + 0.49 + 7 * 0.045 + 0.06;
+  let flick = 0;
+  flickCoin = function () { flick = 1; touched(); };
+  ups.push(function (t, dt, amt, idle) {
+    flick = Math.max(0, flick - dt * 0.45);
+    const a = Math.max(amt, idle);
+    spinner.rotation.y += dt * (0.6 + 7 * a + flick * 34);
+    // Leaning over as it loses momentum, the way a coin does before it drops.
+    spinner.rotation.z = (0.12 + Math.sin(t * 2.3) * 0.06) * a * (1 - flick);
+    spinner.position.y = COIN_Y + Math.sin(t * 4.6) * 0.008 * a
+                       + Math.sin(Math.min(1, flick) * Math.PI) * 0.3;
+  });
 
   // The vault door. Hinged on its right edge and swung toward the middle of
   // the room, which is the only direction with nothing in the way.
@@ -928,10 +1090,14 @@ function animInvesting(group) {
   const head = part(b => b.box(-0.014, -0.014, 0, 0.028, 0.028, 0.012, 0xcdf3de), true);
   group.add(head);
 
+  // Its own clock rather than the world's, so touching the screen can send it
+  // back to the start of the run.
+  let cyc = 0;
+  redrawCurve = function () { cyc = 0; touched(); };
   ups.push(function (t, dt, amt, idle) {
     const a = Math.max(amt, idle);
+    cyc = (cyc + dt * 0.115) % 1;
     // Asleep it just shows the finished curve; awake it redraws itself.
-    const cyc = (t * 0.115) % 1;
     const p = a > 0.05 ? (cyc < 0.72 ? cyc / 0.72 : 1) : 1;
     for (let i = 0; i < N; i++) {
       const grow = clamp((p - i / (N - 1)) * (N - 1) + 1, 0, 1);
@@ -984,18 +1150,7 @@ function buildBJJ(b, g) {
   b.box(rx + 1.15, F, rz, 0.14, 1.9, 0.14, C.woodDark);
   b.box(rx, F + 1.78, rz, 2.4, 0.1, 0.1, C.wood);
 
-  // White belt, two stripes taped across the bar.
-  const wx = rx - 0.46;
-  b.box(wx, F + 0.96, rz, 0.28, 0.82, 0.08, C.beltWhite);
-  b.box(wx, F + 1.02, rz, 0.3, 0.36, 0.1, C.beltBlack);          // the rank bar
-  b.box(wx, F + 1.10, rz, 0.32, 0.055, 0.12, C.beltWhite);       // tape, across
-  b.box(wx, F + 1.21, rz, 0.32, 0.055, 0.12, C.beltWhite);
-
-  // Taekwondo black belt, one gold stripe across it.
-  const kx = rx + 0.56;
-  b.box(kx, F + 0.96, rz, 0.28, 0.82, 0.08, C.beltBlack);
-  b.box(kx, F + 1.02, rz, 0.3, 0.36, 0.1, 0x201e1c);
-  b.box(kx, F + 1.15, rz, 0.32, 0.065, 0.12, C.brass);
+  // Both belts hang off the bar and sway, so they are meshes — see animBJJ.
 
   // A gi folded on a bench, off the mat.
   b.box(0.3, F, 3.0, 2.0, 0.42, 0.55, C.woodDark);
@@ -1004,14 +1159,13 @@ function buildBJJ(b, g) {
   b.box(-0.2, F + 0.66, 3.0, 0.56, 0.1, 0.38, 0xd6d4cb);
   b.box(0.26, F + 0.5, 3.0, 0.2, 0.08, 0.32, C.beltWhite);
   b.box(0.26, F + 0.5, 3.0, 0.09, 0.09, 0.34, 0x2f2c2a);
-  b.cyl(1.0, F + 0.5, 3.0, 0.09, 0.09, 0.28, 8, 0x7fb0c4);
-  b.cyl(1.0, F + 0.78, 3.0, 0.05, 0.05, 0.06, 8, C.metalDark);
+  // The drink bottle rocks — see animBJJ.
 
   // The dummy is left out on the mat, and gets thrown when you touch it, so
   // it is built in animBJJ rather than here.
 
-  // Spare mats stacked in the corner.
-  for (let i = 0; i < 3; i++) {
+  // Spare mats stacked in the corner. The top one slides — see animBJJ.
+  for (let i = 0; i < 2; i++) {
     b.box(-2.7, F + i * 0.11, 2.6, 1.15, 0.11, 0.8, i % 2 ? C.matA : C.matB, 0.2);
   }
   pottedPlant(b, 2.8, 2.6, 1.0);
@@ -1019,6 +1173,7 @@ function buildBJJ(b, g) {
 }
 
 let hitBag = null, throwDummy = null;
+let swingBelts = null, knockBottle = null, pullMat = null;
 
 function animBJJ(group) {
   // The bag hangs off the arm and swings, on two frequencies so it never looks
@@ -1037,6 +1192,52 @@ function animBJJ(group) {
   // being another steady sine on top of the idle one.
   let hit = 0, hitAt = 0;
   hitBag = function () { hit = 1; hitAt = 0; touched(); };
+
+  // The two belts, each hanging off the bar on its own pivot. Both are real:
+  // the white one being worn now, and the taekwondo belt from before.
+  const RX = 1.35, RZ = -3.05, BAR = F + 1.78;
+  const belts = [];
+  for (const spec of [
+    { x: RX - 0.46, body: C.beltWhite, bar: C.beltBlack, tape: C.beltWhite, two: true },
+    { x: RX + 0.56, body: C.beltBlack, bar: 0x201e1c, tape: C.brass, two: false }
+  ]) {
+    const pivot = new THREE.Group();
+    pivot.position.set(spec.x, BAR, RZ);
+    group.add(pivot);
+    pivot.add(part(function (b) {
+      const y0 = -(BAR);
+      b.box(0, y0 + F + 0.96, 0, 0.28, 0.82, 0.08, spec.body);
+      b.box(0, y0 + F + 1.02, 0, 0.3, 0.36, 0.1, spec.bar);
+      if (spec.two) {
+        b.box(0, y0 + F + 1.10, 0, 0.32, 0.055, 0.12, spec.tape);
+        b.box(0, y0 + F + 1.21, 0, 0.32, 0.055, 0.12, spec.tape);
+      } else {
+        b.box(0, y0 + F + 1.15, 0, 0.32, 0.065, 0.12, spec.tape);
+      }
+    }));
+    belts.push(pivot);
+  }
+
+  // The drink bottle left on the bench, rocking on its base.
+  const bottle = new THREE.Group();
+  bottle.position.set(1.0, F + 0.5, 3.0);
+  group.add(bottle);
+  bottle.add(part(function (b) {
+    b.cyl(0, 0, 0, 0.09, 0.09, 0.28, 8, 0x7fb0c4);
+    b.cyl(0, 0.28, 0, 0.05, 0.05, 0.06, 8, C.metalDark);
+  }));
+
+  // The top spare mat, half pulled off the stack.
+  const topMat = part(function (b) {
+    b.box(0, 0, 0, 1.15, 0.11, 0.8, C.matA, 0.2);
+  });
+  topMat.position.set(-2.7, F + 0.22, 2.6);
+  group.add(topMat);
+
+  let swung = 0, knocked = 0, matPulled = false, matOff = 0;
+  swingBelts = function () { swung = 1; touched(); };
+  knockBottle = function () { knocked = 1; touched(); };
+  pullMat = function () { matPulled = !matPulled; touched(); };
 
   // The dummy, on a pivot through its middle so a throw rolls it rather than
   // pushing it through the mat.
@@ -1086,6 +1287,31 @@ function animBJJ(group) {
     }
     // Settling breath, so it is never completely dead on the mat.
     roll.rotation.x = a * Math.sin(t * 0.8) * 0.02;
+
+    // Belts turning on their hangers, each on its own slow beat, plus whatever
+    // is left of a shove.
+    swung = Math.max(0, swung - dt * 0.5);
+    for (let i = 0; i < belts.length; i++) {
+      belts[i].rotation.y = Math.sin(t * (0.42 + i * 0.13) + i * 2.1) * 0.26 * a
+                          + Math.sin(t * 6.2 + i * 1.3) * swung * swung * 0.9;
+      belts[i].rotation.z = Math.sin(t * (0.61 + i * 0.09)) * 0.035 * a;
+    }
+
+    // The bottle: rocking, or knocked over and slowly righting itself.
+    knocked = Math.max(0, knocked - dt * 0.42);
+    const tip = Math.sin(Math.min(1, knocked * 1.6) * Math.PI * 0.5) * 1.45;
+    bottle.rotation.z = Math.sin(t * 1.9) * 0.07 * a + tip;
+    bottle.rotation.x = Math.sin(t * 1.4 + 0.8) * 0.05 * a;
+    bottle.position.x = 1.0 + Math.sin(tip) * 0.14;
+    bottle.position.y = F + 0.5 - (1 - Math.cos(tip)) * 0.09;
+
+    // The top mat creeps off the stack, or is pulled right off onto the floor.
+    matOff += ((matPulled ? 1 : 0) - matOff) * (1 - Math.pow(0.02, dt));
+    const creep = (0.5 + 0.5 * Math.sin(t * 0.7)) * 0.22 * a * (1 - matOff);
+    topMat.position.x = -2.7 + creep + matOff * 1.25;
+    topMat.position.y = F + 0.22 + Math.abs(Math.sin(t * 0.7)) * 0.01 * a
+                      - matOff * 0.2;
+    topMat.rotation.z = matOff * 0.06;
   }];
 }
 
@@ -1149,29 +1375,21 @@ function buildMusic(b, g) {
     b.box(px, F, pz, 0.1, 0.05, 0.5, C.metalDark, syr);
   }
   b.box(syx, F + 0.72, syz, 1.72, 0.14, 0.54, 0x3f4348, syr);
-  for (let i = 0; i < 13; i++) {
-    const [kx, kz] = loc(syx, syz, syr, -0.72 + i * 0.12, 0.11);
-    const black = (i % 7 === 1 || i % 7 === 3 || i % 7 === 5);
-    b.box(kx, F + 0.86, kz, 0.1, 0.03, 0.26, black ? 0x2c2f33 : C.paper, syr);
-  }
+  // Keys are meshes so they can be played — see animMusic.
   for (let i = 0; i < 4; i++) {
     const [nx, nz] = loc(syx, syz, syr, -0.62 + i * 0.19, -0.16);
     b.cyl(nx, F + 0.86, nz, 0.04, 0.04, 0.05, 6, C.brass);
   }
 
-  // Record crate.
+  // Record crate. The sleeves inside it riffle — see animMusic.
   b.box(2.5, F, -1.9, 0.95, 0.7, 0.8, C.woodDark, -0.35);
-  const r = rng(21);
-  for (let i = 0; i < 9; i++) {
-    b.box(2.5 - 0.3 + i * 0.075, F + 0.16, -1.9 + (i - 4) * 0.028,
-          0.05, 0.62, 0.62, BOOKS[(r() * BOOKS.length) | 0], -0.35);
-  }
   b.cylC(1.4, F + 0.34, 1.9, 0.34, 0.34, 0.035, 12, C.vinyl, 0, 0, 0);  // one left out
   b.cylC(1.4, F + 0.36, 1.9, 0.1, 0.1, 0.02, 10, C.brass, 0, 0, 0);
   pottedPlant(b, -2.9, 2.4, 1.15);
 }
 
 let spinDecks = null, burstMeters = null;
+let thumpSpeakers = null, pullRecord = null, playKeys = null;
 
 function animMusic(group) {
   const ups = [];
@@ -1222,15 +1440,80 @@ function animMusic(group) {
     meterRoot.add(m);
     meters.push(m);
   }
+  // The sleeves in the record crate, leaning through as if someone is going
+  // back to front looking for something.
+  const sleeves = [];
+  const rr = rng(21);
+  for (let i = 0; i < 9; i++) {
+    const m = part(function (b) {
+      b.box(-0.025, 0, -0.31, 0.05, 0.62, 0.62, BOOKS[(rr() * BOOKS.length) | 0]);
+    });
+    const lx = -0.3 + i * 0.075, lz = (i - 4) * 0.028;
+    m.position.set(2.5 + Math.cos(-0.35) * lx + Math.sin(-0.35) * lz, F + 0.16,
+                   -1.9 - Math.sin(-0.35) * lx + Math.cos(-0.35) * lz);
+    m.rotation.y = -0.35;
+    group.add(m);
+    sleeves.push(m);
+  }
+
+  // Synth keys, played in a slow rolling figure rather than at random.
+  const keys = [], SYX = -2.4, SYZ = -1.85, SYR = 0.55;
+  for (let i = 0; i < 13; i++) {
+    const black = (i % 7 === 1 || i % 7 === 3 || i % 7 === 5);
+    const m = part(function (b) {
+      b.box(-0.05, 0, -0.13, 0.1, 0.03, 0.26, black ? 0x2c2f33 : C.paper);
+    });
+    const [kx, kz] = loc(SYX, SYZ, SYR, -0.72 + i * 0.12, 0.11);
+    m.position.set(kx, F + 0.86, kz);
+    m.rotation.y = SYR;
+    group.add(m);
+    keys.push(m);
+  }
+  // Touch the crate and one record lifts out of it; touch the synth and it
+  // plays a run up the keys rather than idling.
+  let lifted = -1, liftT = 0, run = 0;
+  pullRecord = function () {
+    lifted = (lifted + 1) % sleeves.length;
+    liftT = 0;
+    touched();
+  };
+  playKeys = function () { run = 0.0001; touched(); };
+
+  ups.push(function (t, dt, amt, idle) {
+    const a = Math.max(amt, idle);
+    if (lifted >= 0) liftT = Math.min(1, liftT + dt * 0.5);
+    for (let i = 0; i < sleeves.length; i++) {
+      // A wave running through the crate, front to back.
+      const p = Math.sin(t * 1.1 - i * 0.55) * 0.5 + 0.5;
+      sleeves[i].rotation.x = -(0.06 + p * 0.3) * a;
+      // The one being pulled rises out, hangs there, and slides back in.
+      const up = i === lifted ? Math.sin(liftT * Math.PI) * 0.42 : 0;
+      sleeves[i].position.y = F + 0.16 + up;
+      if (i === lifted && liftT >= 1) lifted = -1;
+    }
+    if (run > 0) {
+      run += dt * 1.5;
+      if (run > 2.2) run = 0;
+    }
+    for (let i = 0; i < keys.length; i++) {
+      const idleOn = Math.max(0, Math.sin(t * 2.4 - i * 0.62));
+      // A run sweeps one key at a time from the bottom of the board up.
+      const pos = run > 0 ? 1 - Math.min(1, Math.abs(run * keys.length - i) * 1.6) : 0;
+      const on = Math.max(Math.pow(idleOn, 6) * a, pos);
+      keys[i].position.y = F + 0.86 - on * 0.026;
+    }
+  });
+
   // Touching the mixer pushes everything into the red for a moment.
   let burst = 0;
   burstMeters = function () { burst = 1; touched(); };
+  const pMeter = phaser();
   ups.push(function (t, dt, amt, idle) {
     burst = Math.max(0, burst - dt * 0.35);
     const a = Math.min(1, Math.max(amt, idle) + burst);
+    const k = pMeter(dt, 3.4 + burst * 5);
     for (let i = 0; i < meters.length; i++) {
-      const level = walk(t * (3.4 + burst * 5) + i * 5.1);
-      meters[i].scale.y = 0.02 + (level * 0.1 + burst * 0.07) * a;
+      meters[i].scale.y = 0.02 + (walk(k + i * 5.1) * 0.1 + burst * 0.07) * a;
     }
   });
 
@@ -1248,9 +1531,14 @@ function animMusic(group) {
     g2.add(woof); g2.add(tweet);
     cones.push(woof, tweet);
   }
+  let thump = 0;
+  thumpSpeakers = function () { thump = 1; touched(); };
   ups.push(function (t, dt, amt, idle) {
+    thump = Math.max(0, thump - dt * 1.9);
     const a = Math.max(amt, idle);
-    const pulse = 1 + Math.sin(t * 8.4) * 0.09 * a + Math.sin(t * 3.1) * 0.05 * a;
+    // The thump is one hard shove that rings out, not a faster wobble.
+    const kick = Math.sin(thump * Math.PI * 3) * thump * thump * 0.4;
+    const pulse = 1 + Math.sin(t * 8.4) * 0.09 * a + Math.sin(t * 3.1) * 0.05 * a + kick;
     for (const c of cones) c.scale.set(pulse, 1, pulse);
   });
 
@@ -1278,8 +1566,8 @@ function buildProjects(b, g) {
 
   shelf(b, -2.95, -0.6, 2.4, 1.55, Math.PI / 2, 55);
   crate(b, 2.85, F, -1.5, 0.7, 0.25);
-  crate(b, 2.75, F + 0.7, -1.45, 0.52, -0.15);
   crate(b, 2.9, F, -0.6, 0.5, 0.5);
+  // The crate on top of the stack rocks, so it is a mesh — see animProjects.
   pottedPlant(b, -2.6, 2.4, 1.15);
   void g;
 }
@@ -1354,6 +1642,8 @@ function makeToy(kind, i) {
   return solidMesh(b);
 }
 
+let openChest = null, spillProjects = null, toppleCrate = null;
+
 function animProjects(group, def, zone) {
   const ups = [];
 
@@ -1414,20 +1704,48 @@ function animProjects(group, def, zone) {
     if (entry.href) d.act = function () { window.open(entry.href, "_blank", "noopener"); };
   }
 
+  // The chest stays shut until somebody opens it — selecting the island is not
+  // the same as reaching for the lid.
+  let open = 0, openTo = 0;
+  openChest = function () { openTo = openTo > 0.5 ? 0 : 1; touched(); };
+
+  // Books off the shelf on the back wall.
+  const spill = bookSpill(group, -2.95, -0.6, Math.PI / 2, 2.4, 1.55, 91);
+  spillProjects = spill.throwOut;
+
+  // The stack of crates: the top one rocks when the scene is awake.
+  const crateTop = part(function (b) { crate(b, 0, 0, 0, 0.52, 0); });
+  crateTop.position.set(2.75, F + 0.7, -1.45);
+  crateTop.rotation.y = -0.15;
+  group.add(crateTop);
+
+  let toppled = false, fall = 0;
+  toppleCrate = function () { toppled = !toppled; touched(); };
+
   ups.push(function (t, dt, amt, idle) {
+    spill.update(dt);
+    const a = Math.max(amt, idle);
+    fall += ((toppled ? 1 : 0) - fall) * (1 - Math.pow(0.01, dt));
+    // Rocking on the stack, or tipped off the side of it onto the rug.
+    crateTop.rotation.z = Math.sin(t * 1.7) * 0.035 * a * (1 - fall) - fall * 0.5;
+    crateTop.position.x = 2.75 + fall * 0.66;
+    crateTop.position.y = F + 0.7 + Math.abs(Math.sin(t * 1.7)) * 0.012 * a
+                        - fall * 0.5;
+
+    open += (openTo - open) * (1 - Math.pow(0.005, dt));
     // A touch past the stop, then back — a lid thrown open, not eased open.
     // Idle only creaks it: whatever is inside stays a surprise until it is
     // actually opened.
-    pivot.rotation.x = -1.85 * amt - Math.sin(amt * Math.PI) * 0.16
-                     - idle * 0.1 * (1 - amt);
+    pivot.rotation.x = -1.85 * open - Math.sin(open * Math.PI) * 0.16
+                     - idle * 0.1 * (1 - open);
     for (const m of toys.children) {
       const home = m.userData.home;
       const wobble = Math.sin(t * 1.15 + m.userData.phase) * 0.09;
-      m.position.x += (home.x * amt - m.position.x) * Math.min(1, dt * 5);
-      m.position.z += ((home.z * amt) + (1 - amt) * -0.4 - m.position.z) * Math.min(1, dt * 5);
-      m.position.y += (((0.82 + home.y + wobble) * amt - 0.34 * (1 - amt)) - m.position.y) * Math.min(1, dt * 5);
-      m.rotation.y += dt * (0.12 + m.userData.spin * amt);
-      if (m.userData.detail) m.userData.detail.enabled = amt > 0.55;
+      m.position.x += (home.x * open - m.position.x) * Math.min(1, dt * 5);
+      m.position.z += ((home.z * open) + (1 - open) * -0.4 - m.position.z) * Math.min(1, dt * 5);
+      m.position.y += (((0.82 + home.y + wobble) * open - 0.34 * (1 - open)) - m.position.y) * Math.min(1, dt * 5);
+      m.rotation.y += dt * (0.12 + m.userData.spin * open);
+      if (m.userData.detail) m.userData.detail.enabled = open > 0.55;
       m.visible = m.position.y > -0.3;
     }
   });
@@ -1498,9 +1816,9 @@ function dogBody(b) {
   b.box(0, 0.39, -0.02, 0.11, 0.035, 0.66, C.dogRidge);        // the ridge
   for (const s of [-1, 1]) {
     b.box(s * 0.21, 0.02, -0.3, 0.13, 0.28, 0.4, C.dog);       // hind legs, folded
-    b.box(s * 0.19, 0.0, -0.44, 0.15, 0.14, 0.16, C.dogPale);  // hind paws
+    b.box(s * 0.19, 0.0, -0.44, 0.15, 0.14, 0.16, C.dogSock);  // hind paws, white
     b.box(s * 0.12, 0.0, 0.32, 0.14, 0.15, 0.38, C.dog);       // forelegs, stretched
-    b.box(s * 0.12, 0.0, 0.6, 0.16, 0.12, 0.16, C.dogPale);    // front paws
+    b.box(s * 0.12, 0.0, 0.6, 0.16, 0.12, 0.16, C.dogSock);    // front paws, white
   }
 }
 
@@ -1520,10 +1838,44 @@ function dogHead(b) {
 }
 
 let petDog = null, toggleLamp = null;
+let spillAboutL = null, spillAboutR = null;
+let wakeLaptop = null, stirMug = null;
 
 function animAbout(group, def, zone) {
   const ups = [];
   const topY = ABOUT_TOP;
+
+  // Both bookcases in the study drop books when they are touched.
+  const left = bookSpill(group, -2.95, -0.5, Math.PI / 2, 3.0, 2.0, 17);
+  const right = bookSpill(group, 2.95, -0.8, -Math.PI / 2, 2.2, 1.55, 41);
+  spillAboutL = left.throwOut;
+  spillAboutR = right.throwOut;
+
+  // The laptop is on: a cursor blinking away on an otherwise dead screen.
+  const cursor = part(function (b) {
+    b.boxC(0, 0, 0, 0.05, 0.022, 0.01, 0x9fd8ff);
+  }, true);
+  cursor.position.set(-0.58, topY + 0.36, 0.3);
+  cursor.rotation.x = -0.22;
+  group.add(cursor);
+  const rows = part(function (b) {
+    for (let i = 0; i < 4; i++) b.boxC(0, -i * 0.045, 0, 0.3 - i * 0.05, 0.014, 0.01, 0x4e6e86);
+  }, true);
+  rows.position.set(-0.46, topY + 0.3, 0.29);
+  rows.rotation.x = -0.22;
+  group.add(rows);
+
+  let awake = 1, lit = 1;
+  wakeLaptop = function () { awake = awake ? 0 : 1; touched(); };
+
+  ups.push(function (t, dt, amt, idle) {
+    left.update(dt);
+    right.update(dt);
+    lit += (awake - lit) * (1 - Math.pow(0.004, dt));
+    const a = Math.max(amt, idle) * lit;
+    cursor.visible = a > 0.15 && (t * 1.7) % 1 < 0.55;
+    rows.visible = a > 0.15;
+  });
 
   // The dog: breathing all the time, head up and tail going when you arrive.
   const dog = new THREE.Group();
@@ -1544,10 +1896,15 @@ function animAbout(group, def, zone) {
   const tailPivot = new THREE.Group();
   tailPivot.position.set(0, 0.14, -0.5);
   dog.add(tailPivot);
+  /* Swept round beside his hip, in three lengths that each turn a little more
+     than the last. It has to curl: the pivot already sits half a unit back from
+     the middle of the bed, so a tail pointing straight out behind him is longer
+     than the bed has room for and hangs out through the side of it. Curled, the
+     whole thing including the white tip stays over the cushion. */
   const tail = part(function (b) {
-    b.box(-0.05, -0.05, -0.26, 0.1, 0.1, 0.3, C.dog);
-    b.box(-0.045, -0.055, -0.5, 0.09, 0.09, 0.26, C.dog);
-    b.box(-0.04, -0.065, -0.68, 0.08, 0.08, 0.14, C.dogPale);
+    b.boxC(0.092, 0.00, -0.092, 0.10, 0.10, 0.26, C.dog, 0, -0.79, 0);
+    b.boxC(0.283, -0.01, -0.220, 0.09, 0.09, 0.21, C.dog, 0, -1.22, 0);
+    b.boxC(0.446, -0.02, -0.258, 0.08, 0.08, 0.13, C.dogSock, 0, -1.54, 0);  // white tip
   });
   tailPivot.add(tail);
 
@@ -1557,19 +1914,24 @@ function animAbout(group, def, zone) {
   let pet = 0;
   petDog = function () { pet = 1; touched(); };
 
+  // Everything of his that speeds up runs on its own accumulated phase.
+  const pBreath = phaser(), pLook = phaser(1.2), pWag = phaser();
+
   ups.push(function (t, dt, amt, idle) {
     pet = Math.max(0, pet - dt * 0.16);
     const a = Math.min(1, Math.max(amt, idle) + pet);
-    const breath = Math.sin(t * (1.5 + pet * 2.4)) * 0.5 + 0.5;
+    const breath = Math.sin(pBreath(dt, 1.5 + pet * 1.6)) * 0.5 + 0.5;
     body.scale.set(1 + breath * 0.02, 1 + breath * (0.025 + pet * 0.03), 1);
     // Asleep his chin is down on his paws; awake his head comes up and he
     // has a look around.
     neck.rotation.x = 0.72 - 0.8 * a + Math.sin(t * 0.9) * 0.03 - pet * 0.16;
-    neck.rotation.y = Math.sin(t * (0.55 + pet * 1.6) + 1.2) * 0.26 * a;
+    neck.rotation.y = Math.sin(pLook(dt, 0.55 + pet * 0.9)) * 0.26 * a;
     neck.rotation.z = Math.sin(t * 0.37) * 0.05 * a;
     // A slow sweep on the cushion most of the time, a proper wag when watched.
-    tailPivot.rotation.y = Math.sin(t * (2.0 + 6.5 * a + pet * 9)) * (0.1 + 0.5 * a);
-    tailPivot.rotation.x = -0.1 - 0.55 * a;
+    // Wag round on Y, lift on Z — the tail lies out to his side, so what raises
+    // it is a roll, not a pitch. Euler order puts the lift first, then the wag.
+    tailPivot.rotation.y = Math.sin(pWag(dt, 2.0 + 4.5 * a + pet * 5)) * (0.1 + 0.5 * a);
+    tailPivot.rotation.z = 0.06 + 0.3 * a;
   });
   void zone;
 
@@ -1597,15 +1959,20 @@ function animAbout(group, def, zone) {
     group.add(m);
     puffs.push(m);
   }
+  let steam = 0;
+  stirMug = function () { steam = 1; touched(); };
+  const pSteam = phaser();
   ups.push(function (t, dt, amt, idle) {
-    const a = Math.max(amt, idle);
+    steam = Math.max(0, steam - dt * 0.3);
+    const a = Math.min(1, Math.max(amt, idle) + steam);
+    const k = pSteam(dt, 0.42 + steam * 0.75);
     for (let i = 0; i < puffs.length; i++) {
-      const p = ((t * 0.42) + i / puffs.length) % 1;
+      const p = (k + i / puffs.length) % 1;
       const m = puffs[i];
-      m.position.y = topY + 0.18 + p * 0.42;
+      m.position.y = topY + 0.18 + p * (0.42 + steam * 0.2);
       m.position.x = 0.58 + Math.sin(p * 5.2 + i) * 0.05;
       m.scale.setScalar(0.5 + p * 1.1);
-      m.material.opacity = a * 0.5 * Math.sin(p * Math.PI);
+      m.material.opacity = a * (0.5 + steam * 0.35) * Math.sin(p * Math.PI);
     }
   });
 
@@ -1666,29 +2033,44 @@ function sandGeometry(fill) {
   return new THREE.CylinderGeometry(Math.max(0.09, rTop), HG_R - 0.04, 1, 14);
 }
 
-let spinHourglass = null;
+let turnHourglass = null;
+let turning = false;
 
-function animHourglass(parentGroup) {
+function animHourglass(group) {
   const ups = [];
 
-  // Everything from here down lives in `group`, which is what turns.
-  const group = new THREE.Group();
-  parentGroup.add(group);
-  group.add(part(hourglassFrame));
+  /* The vessel — woodwork, brass and glass — hangs off a pivot at the neck,
+     which is what an hourglass actually turns about. Everything above the neck
+     mirrors what is below it, so the glass looks identical after the turn and
+     only the frame gives it away: the fat plinth ends up on top.
 
-  let spinFrom = 0, spinTo = 0, spinT = 1;
-  spinHourglass = function () {
-    spinFrom = group.rotation.y;
-    spinTo = spinFrom + Math.PI * 2;    // one full, heavy turn
-    spinT = 0;
+     The sand is deliberately NOT in here. It stays the right way up in the
+     world and simply pours again, which is both what sand does and far less
+     work than mirroring every level, stream and grain. */
+  const vessel = new THREE.Group();
+  vessel.position.set(0, HG_NECK, 0);
+  group.add(vessel);
+  const frame = part(hourglassFrame);
+  frame.position.y = -HG_NECK;
+  vessel.add(frame);
+
+  let turnFrom = 0, turnTo = 0, turnT = 1;
+  turnHourglass = function () {
+    if (turnT < 1) return;                 // one turn at a time
+    turnFrom = vessel.rotation.z;
+    turnTo = turnFrom + Math.PI;
+    turnT = 0;
+    turning = true;
+    if (sandCol) sandCol.scale.y = 0.0001; // it all runs back to the neck
     touched();
   };
   ups.push(function (t, dt) {
-    if (spinT >= 1) return;
-    spinT = Math.min(1, spinT + dt * 0.42);
-    // Quick away, long settle — a heavy thing given a shove.
-    const e = 1 - Math.pow(1 - spinT, 3);
-    group.rotation.y = spinFrom + (spinTo - spinFrom) * e;
+    if (turnT >= 1) return;
+    turnT = Math.min(1, turnT + dt * 0.85);
+    // Slow to start, slow to stop: a heavy thing lifted and set back down.
+    const e = turnT < 0.5 ? 2 * turnT * turnT : 1 - Math.pow(-2 * turnT + 2, 2) / 2;
+    vessel.rotation.z = turnFrom + (turnTo - turnFrom) * e;
+    if (turnT >= 1) { turning = false; repour(); }
   });
 
   const glassMat = new THREE.MeshLambertMaterial({
@@ -1711,15 +2093,16 @@ function animHourglass(parentGroup) {
   topSand.position.set(0, HG_NECK + 0.26, 0);
   group.add(topSand);
 
-  // The glass, last so it draws over what is inside it.
+  // The glass, last so it draws over what is inside it. It turns with the
+  // vessel, and is its own mirror image, so it looks the same either way up.
   const lower = new THREE.Mesh(
     new THREE.CylinderGeometry(HG_WAIST, HG_R, HG_BULB, 14, 1, true), glassMat);
-  lower.position.set(0, HG_BASE + HG_BULB / 2, 0);
-  group.add(lower);
+  lower.position.set(0, HG_BASE + HG_BULB / 2 - HG_NECK, 0);
+  vessel.add(lower);
   const upper = new THREE.Mesh(
     new THREE.CylinderGeometry(HG_R, HG_WAIST, HG_BULB, 14, 1, true), glassMat);
-  upper.position.set(0, HG_NECK + HG_BULB / 2, 0);
-  group.add(upper);
+  upper.position.set(0, HG_BULB / 2, 0);
+  vessel.add(upper);
 
   // The stream, and grains falling down it so the motion reads at any size.
   const stream = new THREE.Mesh(
@@ -1758,6 +2141,15 @@ function animHourglass(parentGroup) {
     const top = HG_BASE + sandCol.scale.y;         // surface of the lower sand
     const drop = Math.max(0.05, HG_NECK - 0.06 - top);
 
+    // Nothing runs while it is up in the air, including the sand itself —
+    // a flat disc hanging where the glass used to be gives the trick away.
+    stream.visible = !turning;
+    mound.visible = !turning;
+    sandCol.visible = !turning;
+    topSand.visible = !turning;
+    for (const g2 of grains) g2.visible = !turning;
+    if (turning) return;
+
     stream.scale.y = drop;
     stream.position.set(0, top + drop / 2, 0);
 
@@ -1792,28 +2184,53 @@ renderer.setPixelRatio(1);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 
+const PAPER = 0xf7f6f3;
+
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xf7f6f3);
+scene.background = new THREE.Color(PAPER);
+
+/* Distance haze in the page's own colour, so the far side of the ring settles
+   back into the paper instead of competing with the island in front of you.
+   The camera sits a fixed 90 out, and the ring is about 15 across, so the
+   range is set well wide of that — the effect wants to be felt, not seen. */
+scene.fog = new THREE.Fog(PAPER, 86, 200);
 
 const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 240);
 
-scene.add(new THREE.HemisphereLight(0xfff6e8, 0x9c9384, 1.0));
-const sun = new THREE.DirectionalLight(0xfff2dd, 2.0);
-sun.position.set(12, 20, 9);
+/* Three lights, and the point of each one:
+
+   sky/ground   an unlit face is never simply dark. It picks up warm from
+                above and a cool blue-grey from below, which is what stops
+                flat-shaded blocks reading as grey cardboard.
+   sun          the warm key. Set lower than it was, because a long shadow
+                describes a shape and a short one only proves it is there.
+   rim          cold, from behind and low, so silhouettes come off a cream
+                background rather than dissolving into it. */
+scene.add(new THREE.HemisphereLight(0xfff4e4, 0x8b93a2, 0.86));
+
+const sun = new THREE.DirectionalLight(0xfff0d6, 2.25);
+sun.position.set(14, 15, 10);
 sun.castShadow = true;
 sun.shadow.mapSize.set(1024, 1024);
-sun.shadow.camera.left = -21;
-sun.shadow.camera.right = 21;
-sun.shadow.camera.top = 21;
-sun.shadow.camera.bottom = -21;
+// Wrapped tight around the ring: the smaller the frustum, the more shadow
+// texels land on the thing casting the shadow.
+sun.shadow.camera.left = -17;
+sun.shadow.camera.right = 17;
+sun.shadow.camera.top = 17;
+sun.shadow.camera.bottom = -17;
 sun.shadow.camera.near = 1;
-sun.shadow.camera.far = 60;
-sun.shadow.bias = -0.0015;
-sun.shadow.normalBias = 0.05;   // stops the stepped cylinders self-shadowing
+sun.shadow.camera.far = 62;
+sun.shadow.bias = -0.0012;
+sun.shadow.normalBias = 0.045;  // stops the stepped cylinders self-shadowing
 scene.add(sun);
-const fill = new THREE.DirectionalLight(0xdfe8f2, 0.3);
-fill.position.set(-10, 6, -8);
+
+const fill = new THREE.DirectionalLight(0xdce6f4, 0.34);
+fill.position.set(-11, 7, -6);
 scene.add(fill);
+
+const rim = new THREE.DirectionalLight(0xb6ccE4, 0.55);
+rim.position.set(-9, 4, -13);
+scene.add(rim);
 
 const world = new THREE.Group();
 scene.add(world);
@@ -1982,23 +2399,28 @@ ZONES.forEach(function (def, i) {
   if (def.id === "investing") {
     addDetail(zone, BOARD_X, BOARD_Y, BOARD_Z, BOARD_W, BOARD_H, 3.05, 1.75, 0.3,
                function () { boardTurned = boardTurned ? 0 : 1; touched(); });
-    addDetail(zone, SCR_X, SCR_Y, SCR_Z, SCR_W, SCR_H, 0.66, 0.44, 0.2);
+    swings(addDetail(zone, SCR_X, SCR_Y, SCR_Z, SCR_W, SCR_H, 0.66, 0.44, 0.2,
+                     function () { if (redrawCurve) redrawCurve(); }));
     swings(addDetail(zone, VAULT_X, F + 1.0, VAULT_Z + 0.45, 1.9, 2.0, 1.9, 1.5, 0.34,
                      function () { vaultOpen = vaultOpen ? 0 : 1; touched(); }, 0.3));
     swings(addDetail(zone, SAFE_X, F + 0.5, SAFE_Z + 0.36, 0.95, 1.0, 1.05, 0.8, 0.34,
                      function () { safeOpen = safeOpen ? 0 : 1; touched(); }, 0.3));
-    addDetail(zone, 2.3, F + 0.62, 1.7, 1.5, 0.7, 1.1, 0.8, 0.45);      // the takings
+    swings(addDetail(zone, 2.3, F + 0.62, 1.7, 1.5, 0.7, 1.1, 0.8, 0.45,
+                     function () { if (flickCoin) flickCoin(); }));       // the takings
   }
 
   if (def.id === "bjj") {
     // The two belts are the point of the rack, so this one just frames them.
-    addDetail(zone, 1.35, F + 1.2, -3.05, 2.5, 1.1, 1.5, 0.95, 0.16);
+    swings(addDetail(zone, 1.35, F + 1.2, -3.05, 2.5, 1.1, 1.5, 0.95, 0.16,
+                     function () { if (swingBelts) swingBelts(); }));
     swings(addDetail(zone, DUM_X, DUM_Y, DUM_Z, 1.3, 0.8, 1.5, 1.0, 0.42,
                      function () { if (throwDummy) throwDummy(); }, 1.3));
     swings(addDetail(zone, BAG_X + 0.78, F + 1.0, BAG_Z, 0.7, 1.6, 1.3, 1.1, 0.36,
                      function () { if (hitBag) hitBag(); }, 0.7));
-    addDetail(zone, 0.1, F + 0.6, 3.0, 2.2, 0.9, 1.4, 1.0, 0.4);        // gi on the bench
-    addDetail(zone, -2.7, F + 0.17, 2.6, 1.3, 0.5, 0.95, 0.7, 0.4);     // spare mats
+    swings(addDetail(zone, 0.1, F + 0.6, 3.0, 2.2, 0.9, 1.9, 1.3, 0.4,
+                     function () { if (knockBottle) knockBottle(); }));   // gi and bottle
+    swings(addDetail(zone, -2.7, F + 0.17, 2.6, 1.3, 0.5, 2.2, 1.6, 0.4,
+                     function () { if (pullMat) pullMat(); }));           // spare mats
   }
 
   if (def.id === "music") {
@@ -2007,30 +2429,38 @@ ZONES.forEach(function (def, i) {
     swings(addDetail(zone, 0, DECK_Y + 0.13, -0.5, 0.8, 0.22, 0.7, 0.5, 0.55,
                      function () { if (burstMeters) burstMeters(); }, 0.3));
     for (const side of [-1, 1]) {
-      addDetail(zone, side * 2.6, F + 1.5, 0.5, 0.9, 1.15, 0.9, 0.8, 0.25);
+      swings(addDetail(zone, side * 2.6, F + 1.5, 0.5, 0.9, 1.15, 0.9, 0.8, 0.25,
+                       function () { if (thumpSpeakers) thumpSpeakers(); }));
     }
-    addDetail(zone, 2.5, F + 0.35, -1.9, 1.1, 0.85, 0.9, 0.7, 0.4);     // record crate
-    addDetail(zone, -2.4, F + 0.85, -1.85, 1.9, 0.55, 1.25, 0.85, 0.45); // the synth
+    swings(addDetail(zone, 2.5, F + 0.35, -1.9, 1.1, 0.85, 1.0, 0.85, 0.4,
+                     function () { if (pullRecord) pullRecord(); }));     // record crate
+    swings(addDetail(zone, -2.4, F + 0.85, -1.85, 1.9, 0.55, 1.25, 0.85, 0.45,
+                     function () { if (playKeys) playKeys(); }));         // the synth
   }
 
   if (def.id === "projects") {
-    addDetail(zone, -2.95, F + 0.78, -0.6, 0.9, 1.6, 1.1, 0.95, 0.25);  // the shelf
-    addDetail(zone, 2.85, F + 0.55, -1.1, 1.2, 1.3, 1.0, 0.85, 0.3);    // the crates
+    swings(addDetail(zone, 0, F + 0.95, 0.3, 2.4, 1.4, 2.3, 1.75, 0.42,
+                     function () { if (openChest) openChest(); }, 1.3));
+    // Framed wide, because the point is watching where the books land.
+    swings(addDetail(zone, -2.6, F + 0.78, -0.6, 0.9, 1.6, 2.5, 2.0, 0.3,
+                     function () { if (spillProjects) spillProjects(); }));
+    swings(addDetail(zone, 2.85, F + 0.55, -1.1, 1.2, 1.3, 1.9, 1.5, 0.3,
+                     function () { if (toppleCrate) toppleCrate(); }));   // the crates
   }
 
   if (def.id === "about") {
     swings(addDetail(zone, DOG_X, DOG_Y + 0.35, DOG_Z + 0.2, 1.3, 1.0, 1.35, 0.95, 0.3,
                      function () { if (petDog) petDog(); }, 1.0));
-    addDetail(zone, -0.35, ABOUT_TOP + 0.22, 0.3, 0.85, 0.6, 0.65, 0.45, 0.3, null, 0.4);
+    swings(addDetail(zone, -0.35, ABOUT_TOP + 0.22, 0.3, 0.85, 0.6, 0.65, 0.45, 0.3,
+                     function () { if (wakeLaptop) wakeLaptop(); }, 0.4));
     swings(addDetail(zone, -0.96, ABOUT_TOP + 0.4, 0.28, 0.5, 0.72, 0.55, 0.5, 0.25,
                      function () { if (toggleLamp) toggleLamp(); }, 0.35));
-    addDetail(zone, 0.6, ABOUT_TOP + 0.1, 0.38, 0.36, 0.36, 0.34, 0.26, 0.35, null, 0.3);
-    addDetail(zone, -2.95, F + 1.05, -0.5, 0.9, 2.0, 1.3, 1.1, 0.22);   // the shelves
-  }
-
-  if (def.id === "hourglass") {
-    swings(addDetail(zone, 0, HG_BASE + HG_BULB, 0, 1.9, 3.0, 1.9, 1.9, 0.3,
-                     function () { if (spinHourglass) spinHourglass(); }, 1.9));
+    swings(addDetail(zone, 0.6, ABOUT_TOP + 0.1, 0.38, 0.36, 0.36, 0.34, 0.26, 0.35,
+                     function () { if (stirMug) stirMug(); }, 0.3));
+    swings(addDetail(zone, -2.6, F + 1.05, -0.5, 0.9, 2.0, 2.8, 2.2, 0.28,
+                     function () { if (spillAboutL) spillAboutL(); }));
+    swings(addDetail(zone, 2.6, F + 0.85, -0.8, 0.9, 1.6, 2.5, 2.0, 0.28,
+                     function () { if (spillAboutR) spillAboutR(); }));
   }
 
   // The laptop on the booth: one tap to read the screen, a second to leave.
@@ -2046,11 +2476,14 @@ ZONES.forEach(function (def, i) {
   if (def.id === "rldatix") {
     swings(addDetail(zone, BED_X, F + 0.75, BED_Z - 0.2, 1.1, 0.5, 1.6, 1.1, 0.42,
                      function () { if (raiseBed) raiseBed(); }, 1.2));
-    addDetail(zone, 2.15, F + 1.28, 1.35, 0.7, 0.5, 0.75, 0.5, 0.3);    // workstation
+    swings(addDetail(zone, 2.15, F + 1.28, 1.35, 0.7, 0.5, 0.75, 0.5, 0.3,
+                     function () { if (reshuffleDash) reshuffleDash(); })); // workstation
     swings(addDetail(zone, BED_X + 0.95, F + 0.7, BED_Z - 1.4, 0.62, 0.46, 0.62, 0.42, 0.2,
                      function () { if (spikeVitals) spikeVitals(); }, 0.25));
-    addDetail(zone, BED_X - 1.35, F + 1.3, BED_Z - 0.5, 0.5, 0.9, 0.7, 0.6, 0.3);
-    addDetail(zone, -2.95, F + 0.85, -0.42, 0.9, 1.7, 1.1, 0.95, 0.25);  // supply cabinet
+    swings(addDetail(zone, BED_X - 1.35, F + 1.3, BED_Z - 0.5, 0.5, 0.9, 0.7, 0.6, 0.3,
+                     function () { if (runDrip) runDrip(); }));           // the IV pole
+    swings(addDetail(zone, -2.95, F + 0.85, -0.42, 0.9, 1.7, 1.1, 0.95, 0.25,
+                     function () { if (openDrawer) openDrawer(); }));     // supply cabinet
     const chart = addDetail(zone, BED_X, CHART_Y, BED_Z + 1.42, 0.82, 0.86,
                             0.55, 0.46, 0.24, null, 0.1);
     CLIPBOARD.lines.forEach(function (line, k) {
@@ -2065,7 +2498,15 @@ ZONES.forEach(function (def, i) {
     });
   }
 });
-addZone(JAR_ZONE, 0, 0, 0, 4.8, 5.0);
+
+/* The hourglass is not in ZONES — it is the middle of the ring, not a part of
+   it — so its own target has to be hung on it here, outside that loop. */
+const jarZone = addZone(JAR_ZONE, 0, 0, 0, 4.8, 5.0);
+if (jarZone) {
+  // Framed wide enough that it stays in shot while it is on its side.
+  swings(addDetail(jarZone, 0, HG_NECK, 0, 1.9, 3.0, 2.5, 2.2, 0.3,
+                   function () { if (turnHourglass) turnHourglass(); }, 1.9));
+}
 
 // Placeholder copy has nowhere left to show itself, so it nags here instead of
 // quietly shipping as though it were finished.
@@ -2100,6 +2541,57 @@ const want = {
 };
 
 let userMoved = false;
+
+/* ---- Travelling to a view -----------------------------------------------------
+   Picking a scene is a journey, not a cut, so the camera works out the whole
+   trip up front and then flies it: where it is now, where it is going, the
+   short way round, and how long that ought to take.
+
+   Two things this fixes. An azimuth is a bearing, and every bearing has
+   infinitely many names — the island at 0.34 is also at 6.62 and at -5.94. The
+   camera's own azimuth wanders wherever dragging leaves it, so subtracting one
+   raw number from another sent it three-quarters of the way round the ring to
+   reach a neighbour. And the old easing was an exponential chase, which is at
+   its fastest the instant you tap and crawls at the end: it read as a snap
+   followed by a settle rather than a move. A fixed duration eased at both ends
+   leaves and arrives gently, and the duration grows with the distance, so
+   stepping next door stays brisk while crossing the ring takes its time. */
+
+const TAU = Math.PI * 2;
+const MOVE_MIN = 0.55;   // seconds, for a move that barely turns
+const MOVE_MAX = 1.3;    // and the cap, for the far side of the ring
+
+/** The same bearing, renamed as whichever of its infinite names is nearest
+    `from` — so the difference between them is never more than half a turn. */
+function nearestAz(target, from) {
+  let d = (target - from + Math.PI) % TAU;
+  if (d < 0) d += TAU;
+  return from + d - Math.PI;
+}
+
+const from = {
+  az: HOME.az, el: HOME.el, fitH: HOME.fitH, fitV: HOME.fitV,
+  scale: 1, sx: 0, sy: 0, target: HOME.target.clone()
+};
+let moveT = 1, moveDur = MOVE_MIN;
+
+/** Begin the flight to whatever `want` now holds. */
+function startMove() {
+  want.az = nearestAz(want.az, cam.az);
+  from.az = cam.az;
+  from.el = cam.el;
+  from.fitH = cam.fitH;
+  from.fitV = cam.fitV;
+  from.scale = cam.scale;
+  from.sx = cam.sx;
+  from.sy = cam.sy;
+  from.target.copy(cam.target);
+  moveDur = Math.min(MOVE_MAX, MOVE_MIN + Math.abs(want.az - cam.az) * 0.26);
+  moveT = 0;
+}
+
+/** Drop out of a flight, for when the visitor takes the camera themselves. */
+function stopMove() { moveT = 1; }
 
 function applyCamera() {
   const R = 90;
@@ -2161,6 +2653,7 @@ canvas.addEventListener("pointermove", function (e) {
 
   if (!dragging) return;
   movedBy += Math.abs(dx) + Math.abs(dy);
+  stopMove();               // a hand on the world outranks a flight in progress
   want.az -= dx * 0.0085;
   want.el = clamp(want.el + dy * 0.006, 0.22, 1.36);
   cam.az = want.az;
@@ -2212,6 +2705,7 @@ function groundPoint(px, py) {
     get close to one belt or one line on a whiteboard rather than always to the
     middle of an island. */
 function zoomAt(px, py, factor) {
+  stopMove();
   const before = want.scale;
   want.scale = clamp(before * factor, 0.12, 1.9);
   const k = 1 - want.scale / before;
@@ -2310,6 +2804,8 @@ function focusDetail(d) {
     want.target.y += FOCUS_LIFT;
   }
 
+  startMove();
+
   // Things that do something mechanical — a safe door, a dummy on the mat —
   // should do it the moment you touch them, not on a second tap. Tapping again
   // runs it again, through the branch above.
@@ -2338,6 +2834,7 @@ function focusZone(zone) {
   want.sx = 0;
   want.sy = 0;
   want.target.set(zone.group.position.x, small ? 2.1 : 1.4, zone.group.position.z);
+  startMove();
 
   document.body.classList.add("focused");
   refreshGates();
@@ -2430,6 +2927,7 @@ function clearFocus() {
   want.sx = 0;
   want.sy = 0;
   want.target.copy(HOME.target);
+  startMove();
   document.body.classList.remove("focused");
   refreshGates();
   refreshCards();
@@ -2506,6 +3004,7 @@ function fillFor(count) {
 }
 
 let total = 0, fillTarget = 0, pourStart = 0, pouring = false;
+let pourCounts = true;
 let grainFall = false, grainT = 0;
 
 function startPour(count) {
@@ -2517,6 +3016,16 @@ function startPour(count) {
   }
   pourStart = performance.now();
   pouring = true;
+  pourCounts = true;
+}
+
+/** After the glass is turned over: the same sand runs again. The tally is not
+    re-counted and no new grain is dropped — nobody visited twice. */
+function repour() {
+  if (!sandCol) return;
+  pourStart = performance.now();
+  pouring = true;
+  pourCounts = false;
 }
 
 function setCounter(v) { counterEl.textContent = Math.round(v).toLocaleString(); }
@@ -2582,15 +3091,34 @@ function frame(now) {
   last = now;
   const t = now / 1000;
 
-  const k = 1 - Math.pow(0.0016, dt);
-  cam.az += (want.az - cam.az) * k;
-  cam.el += (want.el - cam.el) * k;
-  cam.fitH += (want.fitH - cam.fitH) * k;
-  cam.fitV += (want.fitV - cam.fitV) * k;
-  cam.scale += (want.scale - cam.scale) * k;
-  cam.sx += (want.sx - cam.sx) * k;
-  cam.sy += (want.sy - cam.sy) * k;
-  cam.target.lerp(want.target, k);
+  if (moveT < 1) {
+    // A planned flight: a fixed run, eased at both ends, along the route
+    // startMove() worked out. Slow away, quick through the middle, slow in.
+    moveT = Math.min(1, moveT + dt / moveDur);
+    const e = moveT < 0.5
+      ? 4 * moveT * moveT * moveT
+      : 1 - Math.pow(-2 * moveT + 2, 3) / 2;
+    cam.az = from.az + (want.az - from.az) * e;
+    cam.el = from.el + (want.el - from.el) * e;
+    cam.fitH = from.fitH + (want.fitH - from.fitH) * e;
+    cam.fitV = from.fitV + (want.fitV - from.fitV) * e;
+    cam.scale = from.scale + (want.scale - from.scale) * e;
+    cam.sx = from.sx + (want.sx - from.sx) * e;
+    cam.sy = from.sy + (want.sy - from.sy) * e;
+    cam.target.lerpVectors(from.target, want.target, e);
+  } else {
+    // Everything else — the opening zoom-out, a pinch, a window resize — is a
+    // target that keeps shifting under the camera, so it just chases.
+    const k = 1 - Math.pow(0.0016, dt);
+    cam.az += (want.az - cam.az) * k;
+    cam.el += (want.el - cam.el) * k;
+    cam.fitH += (want.fitH - cam.fitH) * k;
+    cam.fitV += (want.fitV - cam.fitV) * k;
+    cam.scale += (want.scale - cam.scale) * k;
+    cam.sx += (want.sx - cam.sx) * k;
+    cam.sy += (want.sy - cam.sy) * k;
+    cam.target.lerp(want.target, k);
+  }
   applyCamera();
 
   const ease = 1 - Math.pow(0.006, dt);
@@ -2619,10 +3147,13 @@ function frame(now) {
     const p = (now - pourStart) / 1800;
     const e = p >= 1 ? 1 : 1 - Math.pow(1 - p, 3);
     const fillH = fillTarget * HG_BULB * e;
-    setCounter(total * e);
+    if (pourCounts) setCounter(total * e);
     sandCol.scale.y = Math.max(0.0001, fillH);
     sandCol.position.y = HG_BASE + fillH / 2;
-    if (p >= 1) { pouring = false; setCounter(total); dropGrain(); }
+    if (p >= 1) {
+      pouring = false;
+      if (pourCounts) { setCounter(total); dropGrain(); }
+    }
   }
 
   if (grainFall && grain) {
