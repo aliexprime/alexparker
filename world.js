@@ -3063,9 +3063,18 @@ document.addEventListener("keydown", function (e) {
   // On the form, Escape shuts the form rather than throwing away the view as
   // well with a half-typed message in it.
   if (formOpen()) closeForm(); else clearFocus();
+  // Backing out is still someone using the place, so the drift waits again.
+  touched();
 });
 
-function touched() { document.body.classList.add("touched"); }
+/* Every deliberate act a visitor makes goes through here — a drag, a tap, a
+   pinch, and every switch and door those taps set off. It hides the hint, and
+   it is also what tells the idle drift to get out of the way. */
+let lastTouch = performance.now();
+function touched() {
+  lastTouch = performance.now();
+  document.body.classList.add("touched");
+}
 
 /* =============================================================================
    Visitor count
@@ -3221,14 +3230,18 @@ function resize() {
   }
 
   // Rotating a phone changes what a good default view is. Adopt the new one,
-  // but never yank the camera away from a view the visitor set themselves.
+  // but never yank the camera away from a view the visitor set themselves —
+  // nor back to the start of a drift that has been quietly turning for a while,
+  // which from the outside is the same thing: an angle nobody asked to leave.
   const home = homeFor();
   HOME.fitH = home.fitH; HOME.fitV = home.fitV;
   HOME.az = home.az; HOME.el = home.el;
   if (!activeZone) {
     want.fitH = HOME.fitH;
     want.fitV = HOME.fitV;
-    if (!userMoved) { want.az = HOME.az; want.el = HOME.el; cam.az = HOME.az; cam.el = HOME.el; }
+    if (!userMoved && !drifted) {
+      want.az = HOME.az; want.el = HOME.el; cam.az = HOME.az; cam.el = HOME.el;
+    }
   }
 
   applyCamera();
@@ -3244,11 +3257,45 @@ let last = performance.now();
 const IDLE_PERIOD = 11;
 const IDLE_WAKE = 0.3;
 
+/* Left alone, the ring turns. Slowly enough that you notice it has moved
+   rather than watch it moving — a shade under two minutes to come all the way
+   round, so an island drifts past about every twenty seconds.
+
+   It is the camera that orbits, not the world. Same picture either way, and
+   this way nothing downstream has to know: the islands stay where they were
+   built, so every angle, hit box and framing computed from them still holds. */
+const DRIFT_RATE = 0.055;     // radians a second
+const DRIFT_WAIT = 3500;      // milliseconds of being left alone first
+let drift = 0;                // eased 0..1, so it never lurches into motion
+let drifted = false;          // has it moved the view off its starting angle?
+
+// Anyone who has asked their system for less movement should not be given a
+// slowly revolving room. Read live, since it can be changed while open.
+const lessMotion = window.matchMedia
+  ? window.matchMedia("(prefers-reduced-motion: reduce)")
+  : { matches: false };
+
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   const t = now / 1000;
+
+  /* Drift only from the wide view, and only between journeys: turning the
+     world while someone is reading a whiteboard, or while the camera is
+     already flying somewhere, is a fight rather than an idle. */
+  const idling = !activeZone && !dragging && moveT >= 1 && !lessMotion.matches &&
+                 (now - lastTouch) > DRIFT_WAIT;
+  // Slow to come on, quick to get out of the way.
+  drift += ((idling ? 1 : 0) - drift) * (1 - Math.pow(idling ? 0.28 : 0.0005, dt));
+  if (drift > 0.001) {
+    // Both, and by the same amount, so the easing below has nothing to correct
+    // and the drift cannot be quietly undone.
+    const d = DRIFT_RATE * drift * dt;
+    cam.az += d;
+    want.az += d;
+    drifted = true;
+  }
 
   if (moveT < 1) {
     // A planned flight: a fixed run, eased at both ends, along the route
