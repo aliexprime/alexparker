@@ -134,11 +134,17 @@ const _c = new THREE.Color();
 
    The falloff is a fixed distance rather than a fraction of the object, since
    this is a local effect: a wardrobe and a footstool have the same dark skirt
-   at the floor, not skirts in proportion to themselves. Anything shorter than
-   the falloff is left alone — a rug, a sheet of paper, a letter of text has no
-   base to speak of, and grading one end to the other would only look grubby. */
-const AO_DROP = 0.2;      // how dark the very bottom goes
-const AO_RISE = 0.22;     // and over what height it comes back up
+   at the floor, not skirts in proportion to themselves.
+
+   Which is exactly why short things have to be left out of it. On something
+   only a little taller than the falloff the skirt is not a skirt any more, it
+   is a wash over the whole object — and a shelf of books, each one graded dark
+   at the bottom and light at the top, reads as a second row of books standing
+   behind the first. So an object has to be a good deal taller than the falloff
+   before it gets one, which leaves books, papers, rugs and lettering flat. */
+const AO_DROP = 0.2;             // how dark the very bottom goes
+const AO_RISE = 0.22;            // and over what height it comes back up
+const AO_MIN = AO_RISE * 2.6;    // shorter than this and it is a wash, not a skirt
 
 class Builder {
   constructor() { this.p = []; this.n = []; this.c = []; }
@@ -160,7 +166,7 @@ class Builder {
       if (pos[i] < lo) lo = pos[i];
       if (pos[i] > hi) hi = pos[i];
     }
-    const shade = hi - lo >= AO_RISE;
+    const shade = hi - lo >= AO_MIN;
 
     for (let i = 0; i < pos.length; i += 3) {
       this.p.push(pos[i], pos[i + 1], pos[i + 2]);
@@ -471,13 +477,18 @@ function shelf(b, x, z, w, h, ry, seed) {
     if (i < rows) b.box(x, F + 0.06 + i * gap, z, w - 2 * t, t, d - 0.06, C.wood, ry);
     const shelfY = F + 0.06 + (i - 1) * gap + t;
     const cap = shelfY + gap - t - 0.04;
+    /* Books deep enough to reach the back panel. Standing 0.05 clear of it,
+       each one threw a shadow of its own size and shape onto the panel behind,
+       and a row of book-then-dark-book-shaped-hole reads as two rows of books.
+       Evening out the heights does the rest: the less panel showing over the
+       top of a short book, the less there is for a tall one to cast onto. */
     let bx = -w / 2 + t + 0.05;
     while (bx < w / 2 - t - 0.12) {
       const bw = 0.055 + r() * 0.055;
-      const bh = Math.min(0.34, gap - 0.12) * (0.7 + r() * 0.3);
-      if (r() > 0.16 && shelfY + bh < cap + 0.12) {
-        const [px, pz] = loc(x, z, ry, bx + bw / 2, 0.02);
-        b.box(px, shelfY, pz, bw, bh, 0.24, BOOKS[(r() * BOOKS.length) | 0], ry);
+      const bh = Math.min(0.34, gap - 0.12) * (0.82 + r() * 0.18);
+      if (r() > 0.09 && shelfY + bh < cap + 0.12) {
+        const [px, pz] = loc(x, z, ry, bx + bw / 2, 0.0);
+        b.box(px, shelfY, pz, bw, bh, 0.28, BOOKS[(r() * BOOKS.length) | 0], ry);
       }
       bx += bw + 0.012;
     }
@@ -833,7 +844,11 @@ const BOARD_Y = F + 1.55;
    doors themselves are separate meshes built in animInvesting. Hinged on their
    right-hand edge, which is the side with room to swing into. */
 const VAULT_X = -2.55, VAULT_Z = -0.9;
-const SAFE_X = -2.5, SAFE_Z = 1.15;
+/* The safe used to stand at (-2.5, 1.15), directly in front of the vault and
+   hiding most of it. It moves to the right of the desk, where it has the corner
+   to itself. Its door swings out on +z through about 83 degrees, so it also has
+   to sit far enough back that the open door clears the coin table at z = 1.22. */
+const SAFE_X = 2.4, SAFE_Z = -0.25;
 
 /* The screen on the desk, the other thing here worth looking at on its own.
    These follow from what monitor() draws, so they and the geometry can never
@@ -1290,11 +1305,15 @@ function animBJJ(group) {
 
     // Belts turning on their hangers, each on its own slow beat, plus whatever
     // is left of a shove.
+    /* The rack's bar runs along x, so a belt folded over it swings about that
+       same axis — out toward you and back again, like anything hanging off a
+       rail. It used to turn on Y and tip on Z, which read as a sideways wobble
+       and never as a swing. A trace of Y is left so the two are not identical. */
     swung = Math.max(0, swung - dt * 0.5);
     for (let i = 0; i < belts.length; i++) {
-      belts[i].rotation.y = Math.sin(t * (0.42 + i * 0.13) + i * 2.1) * 0.26 * a
-                          + Math.sin(t * 6.2 + i * 1.3) * swung * swung * 0.9;
-      belts[i].rotation.z = Math.sin(t * (0.61 + i * 0.09)) * 0.035 * a;
+      belts[i].rotation.x = Math.sin(t * (0.42 + i * 0.13) + i * 2.1) * 0.24 * a
+                          + Math.sin(t * 6.2 + i * 1.3) * swung * swung * 0.85;
+      belts[i].rotation.y = Math.sin(t * (0.61 + i * 0.09)) * 0.05 * a;
     }
 
     // The bottle: rocking, or knocked over and slowly righting itself.
@@ -1321,10 +1340,27 @@ function animBJJ(group) {
 
 const DECK_Y = F + 0.92;
 
-/* The laptop lid on the booth: a focus target, and the way out to SoundCloud.
-   The lid leans back, so anything written on it has to lean back with it — the
-   screen text is a separate mesh in animMusic rather than part of the island. */
-const LAP_X = 0.05, LAP_Y = DECK_Y + 0.32, LAP_Z = -0.03, LAP_TILT = -0.24;
+/* The panel on the front of the booth: a focus target, and the way out to
+   SoundCloud. Flat against the front face, so unlike the laptop it replaced it
+   needs no group of its own to lean the lettering with a lid — it is simply
+   part of the island. PANEL_Y is the middle of it, and the booth front is at
+   z = 0.125, so the plate sits a hair proud of that. */
+const PANEL_Y = F + 0.55, PANEL_Z = 0.14, PANEL_W = 1.32, PANEL_H = 0.46;
+
+/* Local +z is out of the ring, so it is the front of the scene. The speakers
+   are the tallest things here and were standing at +0.5, right in front of the
+   crate and the synth — from most angles you got a wall of black box. They go
+   to the back, where their height frames the booth instead of hiding it, and
+   the two things worth looking at come forward.
+
+   Held here rather than written into each place that needs them, because the
+   crate and the synth are each built in one function, animated in another and
+   given a hit box in a third, and all three have to agree. */
+const SPK_X = 2.6, SPK_Z = -2.25;
+const SYN_X = -2.4, SYN_Z = 1.9, SYN_R = 0.55;
+const CRATE_X = 2.5, CRATE_Z = 1.75, CRATE_R = -0.35;
+const CRATE_H = 0.46;                    // wall height; the sleeves stand proud
+const SLEEVE_Y = F + 0.08;               // resting on the crate floor
 
 function buildMusic(b, g) {
   island(b, ISLAND, 0xcfc7b6);
@@ -1349,43 +1385,70 @@ function buildMusic(b, g) {
     b.cyl(-0.2 + i * 0.2, DECK_Y + 0.23, -0.52, 0.045, 0.045, 0.04, 6, C.brass);
   }
 
-  // Laptop at the back of the booth.
-  b.box(LAP_X, DECK_Y + 0.1, 0.12, 0.6, 0.03, 0.4, C.metal);
-  b.boxC(LAP_X, LAP_Y, -0.06, 0.6, 0.4, 0.03, C.metal, LAP_TILT, 0, 0);
-  g.boxC(LAP_X, LAP_Y, LAP_Z, 0.53, 0.33, 0.012, 0x25333d, LAP_TILT, 0, 0);
+  /* The handle, lit into the front of the booth.
+
+     It used to be a laptop standing open on the deck table, and it stood in
+     the mixer: the mixer runs from z -0.68 to -0.02 and the screen was at
+     -0.06, inside it. There is no room to separate them up there either. The
+     top is 1.05 deep, the decks and mixer take 0.66 of that, and a laptop's
+     screen sits at the back of its own base — so pushing the screen forward
+     pushes the base off the front edge, which it already overhung.
+
+     On the front panel it cannot clash with anything on the table, and it
+     reads the way the front of a booth usually does. */
+  b.box(0, PANEL_Y - PANEL_H / 2, PANEL_Z, PANEL_W + 0.08, PANEL_H + 0.08, 0.03, C.metalDark);
+  g.box(0, PANEL_Y - PANEL_H / 2, PANEL_Z + 0.012, PANEL_W, PANEL_H, 0.02, 0x25333d);
+  /* The y given to a line of text is the TOP of it, not the middle, so each
+     line has to be placed below the whole depth of the one above: a glyph is
+     seven pixels tall, so a line set at px is 7 x px deep. */
+  textMid(g, MUSIC_LINK.title, 0, PANEL_Y + 0.17, PANEL_Z + 0.03, 0.013, C.ledAmber);
+  g.box(0, PANEL_Y + 0.055, PANEL_Z + 0.03, 0.82, 0.012, 0.02, 0x3d5766);
+  textMid(g, MUSIC_LINK.handle, 0, PANEL_Y + 0.02, PANEL_Z + 0.03, 0.019, C.ledCyan);
+  textMid(g, MUSIC_LINK.foot, 0, PANEL_Y - 0.15, PANEL_Z + 0.03, 0.0065, 0x6f8c9b);
 
   // Headphones resting on the corner.
   b.cylC(-1.15, DECK_Y + 0.12, 0.28, 0.16, 0.16, 0.05, 10, 0x33373b, Math.PI / 2, 0, 0);
   b.cylC(-0.82, DECK_Y + 0.12, 0.28, 0.16, 0.16, 0.05, 10, 0x33373b, Math.PI / 2, 0, 0);
   b.box(-0.99, DECK_Y + 0.24, 0.28, 0.36, 0.05, 0.06, 0x44484c);
 
-  // Speakers on stands. Cones are animated separately.
+  // Speakers on stands, at the back where they frame the booth. Cones animate.
   for (const side of [-1, 1]) {
-    const x = side * 2.6;
-    b.box(x, F, 0.5, 0.5, 0.06, 0.5, C.metalDark);
-    b.cyl(x, F + 0.06, 0.5, 0.05, 0.06, 0.95, 6, C.metalDark);
-    b.box(x, F + 1.0, 0.5, 0.72, 1.05, 0.6, C.speaker, side * 0.32);
+    const x = side * SPK_X;
+    b.box(x, F, SPK_Z, 0.5, 0.06, 0.5, C.metalDark);
+    b.cyl(x, F + 0.06, SPK_Z, 0.05, 0.06, 0.95, 6, C.metalDark);
+    // Turned in toward the middle, the way a pair actually gets aimed.
+    b.box(x, F + 1.0, SPK_Z, 0.72, 1.05, 0.6, C.speaker, -side * 0.32);
   }
 
-  // Synth on a stand, angled in toward the booth.
-  const syx = -2.4, syz = -1.85, syr = 0.55;
+  // Synth on a stand, out front on the left.
   for (const side of [-1, 1]) {
-    const [px, pz] = loc(syx, syz, syr, side * 0.66, 0);
+    const [px, pz] = loc(SYN_X, SYN_Z, SYN_R, side * 0.66, 0);
     b.box(px, F, pz, 0.07, 0.72, 0.07, C.metalDark);
-    b.box(px, F, pz, 0.1, 0.05, 0.5, C.metalDark, syr);
+    b.box(px, F, pz, 0.1, 0.05, 0.5, C.metalDark, SYN_R);
   }
-  b.box(syx, F + 0.72, syz, 1.72, 0.14, 0.54, 0x3f4348, syr);
+  b.box(SYN_X, F + 0.72, SYN_Z, 1.72, 0.14, 0.54, 0x3f4348, SYN_R);
   // Keys are meshes so they can be played — see animMusic.
   for (let i = 0; i < 4; i++) {
-    const [nx, nz] = loc(syx, syz, syr, -0.62 + i * 0.19, -0.16);
+    const [nx, nz] = loc(SYN_X, SYN_Z, SYN_R, -0.62 + i * 0.19, -0.16);
     b.cyl(nx, F + 0.86, nz, 0.04, 0.04, 0.05, 6, C.brass);
   }
 
-  // Record crate. The sleeves inside it riffle — see animMusic.
-  b.box(2.5, F, -1.9, 0.95, 0.7, 0.8, C.woodDark, -0.35);
-  b.cylC(1.4, F + 0.34, 1.9, 0.34, 0.34, 0.035, 12, C.vinyl, 0, 0, 0);  // one left out
-  b.cylC(1.4, F + 0.36, 1.9, 0.1, 0.1, 0.02, 10, C.brass, 0, 0, 0);
-  pottedPlant(b, -2.9, 2.4, 1.15);
+  /* Record crate, out front on the right. Built as a box with nothing in it —
+     four walls and a floor — because the sleeves stand inside it. As one solid
+     block the records were fins stuck in a lump of wood, which is what made
+     lifting one out look wrong however it moved. */
+  const cw = 0.95, cd = 0.8, ct = 0.07;
+  b.box(CRATE_X, F, CRATE_Z, cw, 0.08, cd, C.woodDark, CRATE_R);
+  for (const side of [-1, 1]) {
+    const [wx2, wz2] = loc(CRATE_X, CRATE_Z, CRATE_R, side * (cw - ct) / 2, 0);
+    b.box(wx2, F, wz2, ct, CRATE_H, cd, C.woodDark, CRATE_R);
+    const [ex, ez] = loc(CRATE_X, CRATE_Z, CRATE_R, 0, side * (cd - ct) / 2);
+    b.box(ex, F, ez, cw, CRATE_H, ct, C.wood, CRATE_R);
+  }
+
+  b.cylC(1.15, F + 0.34, 2.55, 0.34, 0.34, 0.035, 12, C.vinyl, 0, 0, 0);  // one left out
+  b.cylC(1.15, F + 0.36, 2.55, 0.1, 0.1, 0.02, 10, C.brass, 0, 0, 0);
+  pottedPlant(b, -2.9, -1.4, 1.15);
 }
 
 let spinDecks = null, burstMeters = null;
@@ -1395,18 +1458,8 @@ function animMusic(group) {
   const ups = [];
   const platters = [];
 
-  // What is on the laptop screen. Its own group so it can lean back with the
-  // lid; local +z is then straight out of the screen.
-  const lap = new THREE.Group();
-  lap.position.set(LAP_X, LAP_Y, LAP_Z);
-  lap.rotation.x = LAP_TILT;
-  group.add(lap);
-  const lb = new Builder();
-  textMid(lb, MUSIC_LINK.title, 0, 0.12, 0.012, 0.008, C.ledAmber);
-  lb.box(0, 0.05, 0.012, 0.44, 0.008, 0.02, 0x3d5766);
-  textMid(lb, MUSIC_LINK.handle, 0, 0.025, 0.012, 0.0095, C.ledCyan);
-  textMid(lb, MUSIC_LINK.foot, 0, -0.085, 0.012, 0.005, 0x6f8c9b);
-  lap.add(solidMesh(lb));
+  // The panel is flat on the booth front and never moves, so it is built with
+  // the rest of the island rather than needing a group here.
 
   for (const side of [-1, 1]) {
     const x = side * 0.85;
@@ -1440,32 +1493,33 @@ function animMusic(group) {
     meterRoot.add(m);
     meters.push(m);
   }
-  // The sleeves in the record crate, leaning through as if someone is going
-  // back to front looking for something.
+  /* The sleeves standing in the record crate. Square, filed front to back, all
+     sitting flat on the crate floor — no stagger and no lean. A record does not
+     tilt out of a crate, it comes straight up out of it, so that is the only
+     thing any of them ever does. */
   const sleeves = [];
   const rr = rng(21);
   for (let i = 0; i < 9; i++) {
     const m = part(function (b) {
-      b.box(-0.025, 0, -0.31, 0.05, 0.62, 0.62, BOOKS[(rr() * BOOKS.length) | 0]);
+      b.box(-0.025, 0, -0.29, 0.05, 0.58, 0.58, BOOKS[(rr() * BOOKS.length) | 0]);
     });
-    const lx = -0.3 + i * 0.075, lz = (i - 4) * 0.028;
-    m.position.set(2.5 + Math.cos(-0.35) * lx + Math.sin(-0.35) * lz, F + 0.16,
-                   -1.9 - Math.sin(-0.35) * lx + Math.cos(-0.35) * lz);
-    m.rotation.y = -0.35;
+    const [px, pz] = loc(CRATE_X, CRATE_Z, CRATE_R, -0.28 + i * 0.07, 0);
+    m.position.set(px, SLEEVE_Y, pz);
+    m.rotation.y = CRATE_R;
     group.add(m);
     sleeves.push(m);
   }
 
   // Synth keys, played in a slow rolling figure rather than at random.
-  const keys = [], SYX = -2.4, SYZ = -1.85, SYR = 0.55;
+  const keys = [];
   for (let i = 0; i < 13; i++) {
     const black = (i % 7 === 1 || i % 7 === 3 || i % 7 === 5);
     const m = part(function (b) {
       b.box(-0.05, 0, -0.13, 0.1, 0.03, 0.26, black ? 0x2c2f33 : C.paper);
     });
-    const [kx, kz] = loc(SYX, SYZ, SYR, -0.72 + i * 0.12, 0.11);
+    const [kx, kz] = loc(SYN_X, SYN_Z, SYN_R, -0.72 + i * 0.12, 0.11);
     m.position.set(kx, F + 0.86, kz);
-    m.rotation.y = SYR;
+    m.rotation.y = SYN_R;
     group.add(m);
     keys.push(m);
   }
@@ -1483,12 +1537,11 @@ function animMusic(group) {
     const a = Math.max(amt, idle);
     if (lifted >= 0) liftT = Math.min(1, liftT + dt * 0.5);
     for (let i = 0; i < sleeves.length; i++) {
-      // A wave running through the crate, front to back.
+      // Someone thumbing through: a small wave of lifts running back to front.
       const p = Math.sin(t * 1.1 - i * 0.55) * 0.5 + 0.5;
-      sleeves[i].rotation.x = -(0.06 + p * 0.3) * a;
-      // The one being pulled rises out, hangs there, and slides back in.
-      const up = i === lifted ? Math.sin(liftT * Math.PI) * 0.42 : 0;
-      sleeves[i].position.y = F + 0.16 + up;
+      // The one being pulled comes right up out of the crate and drops back.
+      const up = i === lifted ? Math.sin(liftT * Math.PI) * 0.5 : 0;
+      sleeves[i].position.y = SLEEVE_Y + p * 0.045 * a + up;
       if (i === lifted && liftT >= 1) lifted = -1;
     }
     if (run > 0) {
@@ -1521,8 +1574,8 @@ function animMusic(group) {
   const cones = [];
   for (const side of [-1, 1]) {
     const g2 = new THREE.Group();
-    g2.position.set(side * 2.6, F + 1.0, 0.5);
-    g2.rotation.y = side * 0.32;
+    g2.position.set(side * SPK_X, F + 1.0, SPK_Z);
+    g2.rotation.y = -side * 0.32;
     group.add(g2);
     const woof = part(b => b.cylC(0, 0, 0, 0.2, 0.2, 0.07, 10, C.cone, Math.PI / 2, 0, 0));
     woof.position.set(0, 0.32, 0.31);
@@ -1931,7 +1984,7 @@ function animAbout(group, def, zone) {
     // Wag round on Y, lift on Z — the tail lies out to his side, so what raises
     // it is a roll, not a pitch. Euler order puts the lift first, then the wag.
     tailPivot.rotation.y = Math.sin(pWag(dt, 2.0 + 4.5 * a + pet * 5)) * (0.1 + 0.5 * a);
-    tailPivot.rotation.z = 0.06 + 0.3 * a;
+    tailPivot.rotation.z = 0.05 + 0.17 * a;
   });
   void zone;
 
@@ -2206,23 +2259,23 @@ const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 240);
                 describes a shape and a short one only proves it is there.
    rim          cold, from behind and low, so silhouettes come off a cream
                 background rather than dissolving into it. */
-scene.add(new THREE.HemisphereLight(0xfff4e4, 0x8b93a2, 0.86));
+/* The ground half of this is warm, not the cool grey it was. What bounces up
+   into the underside of a chair leg is whatever the chair is standing on, and
+   everything here stands on a cream floor. The cool stays where it belongs, in
+   the fill and the rim, which is what keeps the warm/cool split. */
+scene.add(new THREE.HemisphereLight(0xfff4e4, 0xa8977f, 0.84));
+
+const SUN_DIR = new THREE.Vector3(14, 15, 10).normalize();
+const SUN_DIST = 34;
 
 const sun = new THREE.DirectionalLight(0xfff0d6, 2.25);
-sun.position.set(14, 15, 10);
 sun.castShadow = true;
 sun.shadow.mapSize.set(1024, 1024);
-// Wrapped tight around the ring: the smaller the frustum, the more shadow
-// texels land on the thing casting the shadow.
-sun.shadow.camera.left = -17;
-sun.shadow.camera.right = 17;
-sun.shadow.camera.top = 17;
-sun.shadow.camera.bottom = -17;
 sun.shadow.camera.near = 1;
-sun.shadow.camera.far = 62;
-sun.shadow.bias = -0.0012;
+sun.shadow.camera.far = SUN_DIST * 2.4;
 sun.shadow.normalBias = 0.045;  // stops the stepped cylinders self-shadowing
 scene.add(sun);
+scene.add(sun.target);
 
 const fill = new THREE.DirectionalLight(0xdce6f4, 0.34);
 fill.position.set(-11, 7, -6);
@@ -2231,6 +2284,74 @@ scene.add(fill);
 const rim = new THREE.DirectionalLight(0xb6ccE4, 0.55);
 rim.position.set(-9, 4, -13);
 scene.add(rim);
+
+/* ---- Where the sun points, and how tightly ------------------------------------
+
+   A directional light's shadow map is a fixed number of texels spread over
+   whatever the shadow camera covers, so covering the whole ring at once means
+   every shadow in it is coarse. Wrapped around all seven islands each texel is
+   about 17mm across, while a focused view puts a screen pixel at about 9mm —
+   so shadow edges were nearly twice as blocky as the pixels they sat in, which
+   is the one place the picture stopped being crisp.
+
+   Nothing needs the whole ring sharp at once. So the shadow camera follows
+   whatever you are looking at and pulls in tight around it, which is a four to
+   five times finer shadow exactly where you are looking, and finer than the
+   pixel grid — so shadow edges land on pixel boundaries and stay there.
+
+   The catch is that a shadow camera which moves smoothly makes its shadows
+   crawl, because the texel grid slides underneath the geometry. The fix is to
+   never place it between texels: work out where it wants to be, then round
+   that to a whole number of texels in the light's own frame. The grid then
+   moves in whole steps and the shadows sit still. */
+
+const RING_HALF = 17;              // enough for every island at once
+
+/** How wide the shadow camera has to be to cover what the eye camera frames,
+    plus enough margin that something standing just out of shot still throws its
+    shadow into it — the sun is about forty degrees up, so the tallest things
+    here reach a couple of units past themselves.
+
+    Rounded up to whole units so that it settles on a size and stays there: a
+    frustum that resizes every frame resizes its texels too, and shadows that
+    sit on a grid which is always changing shimmer. */
+function sunHalfFor(fit) {
+  return clamp(Math.ceil(fit * 1.12 + 1.6), 2, RING_HALF);
+}
+
+// An orthonormal frame for the light, so a position can be rounded to texels.
+const _lz = SUN_DIR.clone();
+const _lx = new THREE.Vector3(0, 1, 0).cross(_lz).normalize();
+const _ly = new THREE.Vector3().crossVectors(_lz, _lx).normalize();
+const _aim = new THREE.Vector3();
+const _aimWide = new THREE.Vector3();
+let shadowHalf = -1;
+
+function aimSun(target, half) {
+  const texel = (half * 2) / sun.shadow.mapSize.x;
+  // Round the aim point to whole texels, along the light's own two axes.
+  const u = Math.round(target.dot(_lx) / texel) * texel;
+  const v = Math.round(target.dot(_ly) / texel) * texel;
+  const w = target.dot(_lz);
+  _aim.copy(_lx).multiplyScalar(u)
+      .addScaledVector(_ly, v)
+      .addScaledVector(_lz, w);
+
+  sun.target.position.copy(_aim);
+  sun.position.copy(_aim).addScaledVector(SUN_DIR, SUN_DIST);
+
+  if (half !== shadowHalf) {
+    shadowHalf = half;
+    const c = sun.shadow.camera;
+    c.left = -half; c.right = half; c.top = half; c.bottom = -half;
+    // Depth precision is spread over the same near/far however wide the
+    // frustum is, so the bias that a wide one needs makes a tight one leak
+    // light under things. Scale it with the area it is covering.
+    sun.shadow.bias = -0.0012 * (half / RING_HALF);
+    c.updateProjectionMatrix();
+  }
+  sun.target.updateMatrixWorld();
+}
 
 const world = new THREE.Group();
 scene.add(world);
@@ -2426,15 +2547,21 @@ ZONES.forEach(function (def, i) {
   if (def.id === "music") {
     swings(addDetail(zone, -0.85, DECK_Y + 0.2, -0.35, 0.85, 0.4, 0.9, 0.6, 0.5,
                      function () { if (spinDecks) spinDecks(); }, 0.7));
-    swings(addDetail(zone, 0, DECK_Y + 0.13, -0.5, 0.8, 0.22, 0.7, 0.5, 0.55,
-                     function () { if (burstMeters) burstMeters(); }, 0.3));
+    /* On the mixer's top face, where its knobs are, rather than in the middle
+       of its body. A laptop used to stand open in front of it, so a tap aimed
+       at the body travelled down through the laptop to get there and the
+       laptop quite rightly answered instead. The laptop has since moved to the
+       booth's front panel, but the top face is still the right target: it is
+       the part you can see. */
+    swings(addDetail(zone, 0, DECK_Y + 0.24, -0.52, 0.8, 0.16, 0.7, 0.5, 0.55,
+                     function () { if (burstMeters) burstMeters(); }, 0.28));
     for (const side of [-1, 1]) {
-      swings(addDetail(zone, side * 2.6, F + 1.5, 0.5, 0.9, 1.15, 0.9, 0.8, 0.25,
+      swings(addDetail(zone, side * SPK_X, F + 1.5, SPK_Z, 0.9, 1.15, 0.9, 0.8, 0.25,
                        function () { if (thumpSpeakers) thumpSpeakers(); }));
     }
-    swings(addDetail(zone, 2.5, F + 0.35, -1.9, 1.1, 0.85, 1.0, 0.85, 0.4,
+    swings(addDetail(zone, CRATE_X, F + 0.35, CRATE_Z, 1.1, 0.85, 1.0, 0.85, 0.4,
                      function () { if (pullRecord) pullRecord(); }));     // record crate
-    swings(addDetail(zone, -2.4, F + 0.85, -1.85, 1.9, 0.55, 1.25, 0.85, 0.45,
+    swings(addDetail(zone, SYN_X, F + 0.85, SYN_Z, 1.9, 0.55, 1.25, 0.85, 0.45,
                      function () { if (playKeys) playKeys(); }));         // the synth
   }
 
@@ -2463,11 +2590,13 @@ ZONES.forEach(function (def, i) {
                      function () { if (spillAboutR) spillAboutR(); }));
   }
 
-  // The laptop on the booth: one tap to read the screen, a second to leave.
+  // The panel on the front of the booth: one tap to read it, a second to go.
   if (def.id === "music") {
-    addDetail(zone, LAP_X, LAP_Y, LAP_Z, 0.6, 0.42, 0.4, 0.3, 0.3,
+    // Sized to the plate, and thin, because it lies flat against the booth
+    // front and there is a whole deck table behind it to keep clear of.
+    addDetail(zone, 0, PANEL_Y, PANEL_Z, PANEL_W, PANEL_H, 0.85, 0.6, 0.22,
               function () { window.open(MUSIC_LINK.href, "_blank", "noopener"); },
-              0.12);
+              0.1);
   }
 
   // The chart on the end of the bed. Tap it to read it; once it fills the
@@ -2519,6 +2648,10 @@ for (const def of ZONES) {
 ============================================================================= */
 
 let cssW = 1, cssH = 1;
+// The rendered buffer's aspect, which is the window's only by accident — see
+// resize(). Everything that frames or picks has to use this one.
+let renderAspect = 1;
+
 
 function homeFor() {
   // Standing more overhead on a tall screen puts the height to work instead of
@@ -2602,7 +2735,7 @@ function applyCamera() {
   );
   camera.lookAt(cam.target);
 
-  const aspect = cssW / cssH;
+  const aspect = renderAspect;
   const fh = cam.fitH * cam.scale, fv = cam.fitV * cam.scale;
   const w = Math.max(fh, fv * aspect);      // whichever axis is the binding one
   const h = w / aspect;
@@ -2692,10 +2825,19 @@ let hovered = null;
 const _plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const _hit = new THREE.Vector3();
 
+/* A pointer position, in the -1..1 the raycaster wants. Measured against the
+   canvas rather than the window: the canvas is a whole number of pixel blocks
+   and so is very slightly larger than the window, and centred in it, so the two
+   no longer share an origin. */
+function toNdc(px, py) {
+  const r = canvas.getBoundingClientRect();
+  ndc.x = ((px - r.left) / Math.max(1, r.width)) * 2 - 1;
+  ndc.y = -((py - r.top) / Math.max(1, r.height)) * 2 + 1;
+}
+
 /** Where the pointer lands on the horizontal plane through the camera target. */
 function groundPoint(px, py) {
-  ndc.x = (px / cssW) * 2 - 1;
-  ndc.y = -(py / cssH) * 2 + 1;
+  toNdc(px, py);
   ray.setFromCamera(ndc, camera);
   _plane.constant = -want.target.y;
   return ray.ray.intersectPlane(_plane, _hit) ? _hit : null;
@@ -2728,8 +2870,7 @@ function zoomAt(px, py, factor) {
 /* Details sit inside a zone's own hit box, so they are tested first — a tap on
    the whiteboard should get you the whiteboard, not the island it stands on. */
 function pick(px, py) {
-  ndc.x = (px / cssW) * 2 - 1;
-  ndc.y = -(py / cssH) * 2 + 1;
+  toNdc(px, py);
   ray.setFromCamera(ndc, camera);
   const dh = ray.intersectObjects(detailHits, false);
   for (const hit of dh) {
@@ -2938,9 +3079,18 @@ document.addEventListener("keydown", function (e) {
   // On the form, Escape shuts the form rather than throwing away the view as
   // well with a half-typed message in it.
   if (formOpen()) closeForm(); else clearFocus();
+  // Backing out is still someone using the place, so the drift waits again.
+  touched();
 });
 
-function touched() { document.body.classList.add("touched"); }
+/* Every deliberate act a visitor makes goes through here — a drag, a tap, a
+   pinch, and every switch and door those taps set off. It hides the hint, and
+   it is also what tells the idle drift to get out of the way. */
+let lastTouch = performance.now();
+function touched() {
+  lastTouch = performance.now();
+  document.body.classList.add("touched");
+}
 
 /* =============================================================================
    Visitor count
@@ -3046,14 +3196,48 @@ function resize() {
   cssW = Math.max(1, window.innerWidth);
   cssH = Math.max(1, window.innerHeight);
 
-  // The whole pixel-art effect: render small, let CSS scale it up. The divisor
-  // is the only dial that matters — smaller means finer pixels and more of
-  // them. Keep the two in step so a phone is not noticeably chunkier than a
-  // desktop, and let big displays run further before the cap bites.
-  const div = cssW < 700 ? 1.04 : 1.23;
-  const w = clamp(Math.round(cssW / div), 320, 1700);
-  const h = Math.max(1, Math.round(w * (cssH / cssW)));
+  /* The whole pixel-art effect is to render small and scale up. What decides
+     whether that reads as pixel art or as a low-resolution image is whether
+     the scale factor is a whole number.
+
+     It was not. Rendering 1171 wide into a 1440 window is a scale of 1.23, and
+     the browser, told to scale without smoothing, has to make some source
+     pixels one screen pixel wide and others two. So the grid was never square
+     and never even, and every pixel changed size as the camera moved. That is
+     the difference between pixel art and a blown-up JPEG.
+
+     So work in device pixels, pick a WHOLE number of them per rendered pixel,
+     and size the canvas to exactly that multiple. Every pixel is then the same
+     square, and edges stay put. The canvas ends up at most one pixel-block
+     larger than the window, which is why it is centred and the body clips. */
+  const dpr = clamp(window.devicePixelRatio || 1, 1, 3);
+  const devW = Math.max(1, Math.round(cssW * dpr));
+  const devH = Math.max(1, Math.round(cssH * dpr));
+
+  /* Aim for a number of pixels across and let the device ratio fall where it
+     may, rather than the other way round. Two screens the same size with
+     different ratios then get the same picture: a plain 1440 monitor puts two
+     device pixels into each one, a retina 1440 puts four, and both end up
+     drawing the same 720-wide world. Resolution is what decides whether the
+     lettering on a whiteboard can be read, so it is the thing to hold still.
+
+     Never below two device pixels to one, or there is no pixel art left. */
+  const target = cssW < 700 ? 400 : 820;
+  const scale = Math.max(2, Math.round(devW / target));
+
+  const w = Math.ceil(devW / scale);
+  const h = Math.max(1, Math.ceil(devH / scale));
   renderer.setSize(w, h, false);
+
+  // Back to CSS pixels for the layout. Fractions are fine and wanted here: the
+  // grid that has to stay whole is the device-pixel one, and this is the value
+  // that keeps it whole.
+  canvas.style.width = (w * scale / dpr) + "px";
+  canvas.style.height = (h * scale / dpr) + "px";
+
+  // The camera has to frame what is actually rendered, not the window, since
+  // the two now differ by up to one pixel block.
+  renderAspect = w / h;
 
   const shadowRes = cssW < 700 ? 1024 : 2048;
   if (sun.shadow.mapSize.x !== shadowRes) {
@@ -3062,14 +3246,18 @@ function resize() {
   }
 
   // Rotating a phone changes what a good default view is. Adopt the new one,
-  // but never yank the camera away from a view the visitor set themselves.
+  // but never yank the camera away from a view the visitor set themselves —
+  // nor back to the start of a drift that has been quietly turning for a while,
+  // which from the outside is the same thing: an angle nobody asked to leave.
   const home = homeFor();
   HOME.fitH = home.fitH; HOME.fitV = home.fitV;
   HOME.az = home.az; HOME.el = home.el;
   if (!activeZone) {
     want.fitH = HOME.fitH;
     want.fitV = HOME.fitV;
-    if (!userMoved) { want.az = HOME.az; want.el = HOME.el; cam.az = HOME.az; cam.el = HOME.el; }
+    if (!userMoved && !drifted) {
+      want.az = HOME.az; want.el = HOME.el; cam.az = HOME.az; cam.el = HOME.el;
+    }
   }
 
   applyCamera();
@@ -3085,11 +3273,45 @@ let last = performance.now();
 const IDLE_PERIOD = 11;
 const IDLE_WAKE = 0.3;
 
+/* Left alone, the ring turns. Slowly enough that you notice it has moved
+   rather than watch it moving — a shade under two minutes to come all the way
+   round, so an island drifts past about every twenty seconds.
+
+   It is the camera that orbits, not the world. Same picture either way, and
+   this way nothing downstream has to know: the islands stay where they were
+   built, so every angle, hit box and framing computed from them still holds. */
+const DRIFT_RATE = 0.055;     // radians a second
+const DRIFT_WAIT = 3500;      // milliseconds of being left alone first
+let drift = 0;                // eased 0..1, so it never lurches into motion
+let drifted = false;          // has it moved the view off its starting angle?
+
+// Anyone who has asked their system for less movement should not be given a
+// slowly revolving room. Read live, since it can be changed while open.
+const lessMotion = window.matchMedia
+  ? window.matchMedia("(prefers-reduced-motion: reduce)")
+  : { matches: false };
+
 function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   const t = now / 1000;
+
+  /* Drift only from the wide view, and only between journeys: turning the
+     world while someone is reading a whiteboard, or while the camera is
+     already flying somewhere, is a fight rather than an idle. */
+  const idling = !activeZone && !dragging && moveT >= 1 && !lessMotion.matches &&
+                 (now - lastTouch) > DRIFT_WAIT;
+  // Slow to come on, quick to get out of the way.
+  drift += ((idling ? 1 : 0) - drift) * (1 - Math.pow(idling ? 0.28 : 0.0005, dt));
+  if (drift > 0.001) {
+    // Both, and by the same amount, so the easing below has nothing to correct
+    // and the drift cannot be quietly undone.
+    const d = DRIFT_RATE * drift * dt;
+    cam.az += d;
+    want.az += d;
+    drifted = true;
+  }
 
   if (moveT < 1) {
     // A planned flight: a fixed run, eased at both ends, along the route
@@ -3120,6 +3342,18 @@ function frame(now) {
     cam.target.lerp(want.target, k);
   }
   applyCamera();
+
+  /* Point the sun's shadow at whatever is being read. Aimed at where the
+     camera is looking rather than at the island itself, so a detail you have
+     zoomed right into is dead centre of the sharp region. Once the whole ring
+     is in view, back out to covering all of it — a shadow that is one screen
+     pixel wide does not need any more resolution than that. */
+  if (activeZone) {
+    aimSun(cam.target, sunHalfFor(Math.max(cam.fitH, cam.fitV) * cam.scale));
+  } else {
+    _aimWide.set(0, 1.1, 0);
+    aimSun(_aimWide, RING_HALF);
+  }
 
   const ease = 1 - Math.pow(0.006, dt);
   for (const zone of zones) {
