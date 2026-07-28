@@ -1800,8 +1800,14 @@ function makeToy(kind, i) {
       for (const f of [0.05, -0.05]) {
         b.cylC(0, 0, f, 0.25, 0.25, 0.02, 14, 0xe2c274, Math.PI / 2, 0, 0);
       }
+      // A T on this face and an H on the other, because it is a coin from a
+      // heads-or-tails game and half of that was missing.
       b.boxC(0, 0, 0.062, 0.07, 0.17, 0.02, 0xa8853c);
       b.boxC(0, 0.05, 0.062, 0.15, 0.06, 0.02, 0xa8853c);
+      for (const s of [-1, 1]) {
+        b.boxC(s * 0.05, 0, -0.062, 0.05, 0.17, 0.02, 0xa8853c);
+      }
+      b.boxC(0, 0, -0.062, 0.09, 0.05, 0.02, 0xa8853c);
       break;
 
     case "football": {
@@ -2626,10 +2632,33 @@ const detailHits = [];
 
 /** A hit box carried by a moving object, so it can be tapped where it is. */
 function addMovingDetail(zone, mesh) {
+  /* Wrapped round the object itself rather than a fixed cube.
+
+     Every one of these used to get the same 0.66 box whatever it was, which
+     for a coin — a disc a tenth of a unit thick — was seven times deeper than
+     the thing it stood for, and for a ball lying on its side was half again
+     too tall. A hit box is a solid: at this camera a ray comes down at about
+     thirty degrees, so a box standing well proud of its object is entered
+     long before the object is reached, and answers taps aimed past it.
+
+     Measured off the geometry so it cannot drift when a shape is redrawn,
+     with a little margin for comfort and a floor so nothing thin is
+     impossible to hit. */
+  mesh.geometry.computeBoundingBox();
+  const bb = mesh.geometry.boundingBox;
+  const size = new THREE.Vector3(), centre = new THREE.Vector3();
+  bb.getSize(size);
+  bb.getCenter(centre);
+
   const hit = new THREE.Mesh(
-    new THREE.BoxGeometry(0.66, 0.66, 0.66),
+    new THREE.BoxGeometry(
+      Math.max(0.2, size.x + 0.07),
+      Math.max(0.2, size.y + 0.07),
+      Math.max(0.2, size.z + 0.07)
+    ),
     new THREE.MeshBasicMaterial({ visible: false })
   );
+  hit.position.copy(centre);
   mesh.add(hit);
   const detail = {
     zone: zone,
