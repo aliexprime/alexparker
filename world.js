@@ -2539,8 +2539,13 @@ ZONES.forEach(function (def, i) {
   if (def.id === "music") {
     swings(addDetail(zone, -0.85, DECK_Y + 0.2, -0.35, 0.85, 0.4, 0.9, 0.6, 0.5,
                      function () { if (spinDecks) spinDecks(); }, 0.7));
-    swings(addDetail(zone, 0, DECK_Y + 0.13, -0.5, 0.8, 0.22, 0.7, 0.5, 0.55,
-                     function () { if (burstMeters) burstMeters(); }, 0.3));
+    /* On the mixer's top face, where its knobs are, not in the middle of its
+       body. The laptop screen stands directly in front of the mixer and rises
+       past it, so a tap aimed at the body had to travel down through the
+       laptop to get there and the laptop quite rightly answered instead. Only
+       the knobs are visible from the front, so only the knobs are the target. */
+    swings(addDetail(zone, 0, DECK_Y + 0.24, -0.52, 0.8, 0.16, 0.7, 0.5, 0.55,
+                     function () { if (burstMeters) burstMeters(); }, 0.28));
     for (const side of [-1, 1]) {
       swings(addDetail(zone, side * SPK_X, F + 1.5, SPK_Z, 0.9, 1.15, 0.9, 0.8, 0.25,
                        function () { if (thumpSpeakers) thumpSpeakers(); }));
@@ -2578,7 +2583,9 @@ ZONES.forEach(function (def, i) {
 
   // The laptop on the booth: one tap to read the screen, a second to leave.
   if (def.id === "music") {
-    addDetail(zone, LAP_X, LAP_Y, LAP_Z, 0.6, 0.42, 0.4, 0.3, 0.3,
+    // Sized to the screen itself. It used to stand taller than the lid does,
+    // and the overhang reached back over the mixer behind it.
+    addDetail(zone, LAP_X, LAP_Y, LAP_Z, 0.6, 0.34, 0.4, 0.3, 0.3,
               function () { window.open(MUSIC_LINK.href, "_blank", "noopener"); },
               0.12);
   }
