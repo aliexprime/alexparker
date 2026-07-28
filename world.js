@@ -123,6 +123,20 @@ const _m = new THREE.Matrix4();
 const _e = new THREE.Euler();
 const _c = new THREE.Color();
 
+/* Contact shade. Light never reaches the crease where an object meets the thing
+   under it, and a renderer that only knows about a sun and a sky will happily
+   light that crease as brightly as the rest. So the bottom of everything gets
+   darkened into its own vertex colours as it is built — free at run time,
+   because it is just the colour the vertex was always going to have.
+
+   The falloff is a fixed distance rather than a fraction of the object, since
+   this is a local effect: a wardrobe and a footstool have the same dark skirt
+   at the floor, not skirts in proportion to themselves. Anything shorter than
+   the falloff is left alone — a rug, a sheet of paper, a letter of text has no
+   base to speak of, and grading one end to the other would only look grubby. */
+const AO_DROP = 0.2;      // how dark the very bottom goes
+const AO_RISE = 0.22;     // and over what height it comes back up
+
 class Builder {
   constructor() { this.p = []; this.n = []; this.c = []; }
 
@@ -137,10 +151,24 @@ class Builder {
     const nor = g.attributes.normal.array;
     _c.set(color);
     const r = _c.r, gr = _c.g, b = _c.b;
+
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 1; i < pos.length; i += 3) {
+      if (pos[i] < lo) lo = pos[i];
+      if (pos[i] > hi) hi = pos[i];
+    }
+    const shade = hi - lo >= AO_RISE;
+
     for (let i = 0; i < pos.length; i += 3) {
       this.p.push(pos[i], pos[i + 1], pos[i + 2]);
       this.n.push(nor[i], nor[i + 1], nor[i + 2]);
-      this.c.push(r, gr, b);
+      if (shade) {
+        const up = Math.min(1, (pos[i + 1] - lo) / AO_RISE);
+        const k = 1 - AO_DROP * (1 - up) * (1 - up);
+        this.c.push(r * k, gr * k, b * k);
+      } else {
+        this.c.push(r, gr, b);
+      }
     }
     g.dispose();
     return this;
@@ -2146,28 +2174,53 @@ renderer.setPixelRatio(1);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 
+const PAPER = 0xf7f6f3;
+
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xf7f6f3);
+scene.background = new THREE.Color(PAPER);
+
+/* Distance haze in the page's own colour, so the far side of the ring settles
+   back into the paper instead of competing with the island in front of you.
+   The camera sits a fixed 90 out, and the ring is about 15 across, so the
+   range is set well wide of that — the effect wants to be felt, not seen. */
+scene.fog = new THREE.Fog(PAPER, 86, 200);
 
 const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 240);
 
-scene.add(new THREE.HemisphereLight(0xfff6e8, 0x9c9384, 1.0));
-const sun = new THREE.DirectionalLight(0xfff2dd, 2.0);
-sun.position.set(12, 20, 9);
+/* Three lights, and the point of each one:
+
+   sky/ground   an unlit face is never simply dark. It picks up warm from
+                above and a cool blue-grey from below, which is what stops
+                flat-shaded blocks reading as grey cardboard.
+   sun          the warm key. Set lower than it was, because a long shadow
+                describes a shape and a short one only proves it is there.
+   rim          cold, from behind and low, so silhouettes come off a cream
+                background rather than dissolving into it. */
+scene.add(new THREE.HemisphereLight(0xfff4e4, 0x8b93a2, 0.86));
+
+const sun = new THREE.DirectionalLight(0xfff0d6, 2.25);
+sun.position.set(14, 15, 10);
 sun.castShadow = true;
 sun.shadow.mapSize.set(1024, 1024);
-sun.shadow.camera.left = -21;
-sun.shadow.camera.right = 21;
-sun.shadow.camera.top = 21;
-sun.shadow.camera.bottom = -21;
+// Wrapped tight around the ring: the smaller the frustum, the more shadow
+// texels land on the thing casting the shadow.
+sun.shadow.camera.left = -17;
+sun.shadow.camera.right = 17;
+sun.shadow.camera.top = 17;
+sun.shadow.camera.bottom = -17;
 sun.shadow.camera.near = 1;
-sun.shadow.camera.far = 60;
-sun.shadow.bias = -0.0015;
-sun.shadow.normalBias = 0.05;   // stops the stepped cylinders self-shadowing
+sun.shadow.camera.far = 62;
+sun.shadow.bias = -0.0012;
+sun.shadow.normalBias = 0.045;  // stops the stepped cylinders self-shadowing
 scene.add(sun);
-const fill = new THREE.DirectionalLight(0xdfe8f2, 0.3);
-fill.position.set(-10, 6, -8);
+
+const fill = new THREE.DirectionalLight(0xdce6f4, 0.34);
+fill.position.set(-11, 7, -6);
 scene.add(fill);
+
+const rim = new THREE.DirectionalLight(0xb6ccE4, 0.55);
+rim.position.set(-9, 4, -13);
+scene.add(rim);
 
 const world = new THREE.Group();
 scene.add(world);
