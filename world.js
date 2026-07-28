@@ -379,6 +379,15 @@ function signBoard(b, x, yBottom, z, title, lines, o) {
   return { w: w, h: h + 0.09 };
 }
 
+/* A frequency that changes over time has to be integrated, never multiplied
+   into t. `Math.sin(t * f)` jumps by `t * delta-f` the instant f changes: barely
+   visible in the first few seconds and violent a few minutes in, which is what
+   made the dog judder and the vitals trace tear. Accumulate instead. */
+function phaser(start) {
+  let p = start || 0;
+  return function (dt, freq) { p += dt * freq; return p; };
+}
+
 function hash1(n) {
   const s = Math.sin(n * 127.1) * 43758.5453;
   return s - Math.floor(s);
@@ -670,6 +679,7 @@ function ecgWave(p) {
 }
 
 let raiseBed = null, spikeVitals = null;
+let openDrawer = null, runDrip = null, reshuffleDash = null;
 
 function animRLDatix(group) {
   const ups = [];
@@ -712,31 +722,42 @@ function animRLDatix(group) {
     b.box(-2.95, F + 0.66, -0.6, 0.5, 0.1, 0.2, 0xc9d6d8);      // and what is in it
   });
   group.add(drawer);
+  let drawerOut = 0, drawerTo = -1;      // -1 = follow the room, 0/1 = held
+  openDrawer = function () { drawerTo = drawerTo > 0.5 ? 0 : 1; touched(); };
   ups.push(function (t, dt, amt, idle) {
     const a = Math.max(amt, idle);
-    drawer.position.z = a * (0.2 + Math.sin(t * 0.9) * 0.04);
+    const want2 = drawerTo < 0 ? a * (0.6 + Math.sin(t * 0.9) * 0.2) : drawerTo;
+    drawerOut += (want2 - drawerOut) * (1 - Math.pow(0.01, dt));
+    drawer.position.z = drawerOut * 0.34;
   });
 
-  // Touching the monitor runs the trace hot for a few seconds.
+  // Touching the monitor runs the trace hot for a few seconds. A resting
+  // 66 bpm, up to about 110 when it is pushed.
   let spike = 0;
   spikeVitals = function () { spike = 1; touched(); };
+  const pBeat = phaser();
   ups.push(function (t, dt, amt, idle) {
     spike = Math.max(0, spike - dt * 0.22);
     const a = Math.min(1, Math.max(amt, idle) + spike);
+    const beat = pBeat(dt, 1.1 + spike * 0.75);
     for (let i = 0; i < bars.length; i++) {
-      bars[i].position.y = ecgWave(t * (0.75 + spike * 1.5) - i * 0.055)
-                         * (0.10 + spike * 0.05) * a;
+      bars[i].position.y = ecgWave(beat - i * 0.055) * (0.10 + spike * 0.05) * a;
     }
   });
 
-  // A drip working its way down the line.
+  // A drip working its way down the line. Touch the pole and it runs faster
+  // for a while.
   const drop = part(b => b.box(0, -0.025, 0, 0.045, 0.05, 0.045, 0xbcd6e0));
   drop.castShadow = false;
   group.add(drop);
+  let fast = 0;
+  runDrip = function () { fast = 1; touched(); };
+  const pDrip = phaser();
   ups.push(function (t, dt, amt, idle) {
-    drop.visible = Math.max(amt, idle) > 0.4;
+    fast = Math.max(0, fast - dt * 0.14);
+    drop.visible = Math.min(1, Math.max(amt, idle) + fast) > 0.4;
+    const p = pDrip(dt, 0.75 + fast * 2.6) % 1;
     if (!drop.visible) return;
-    const p = (t * 0.75) % 1;
     drop.position.set(BED_X - 1.35, F + 1.28 - p * 0.52, BED_Z - 0.5);
   });
 
@@ -752,11 +773,16 @@ function animRLDatix(group) {
     dash.add(m);
     dashBars.push(m);
   }
+  // Touching the workstation redraws the dashboard on a fresh set of numbers.
+  let seed = 0, shuffle = 0;
+  reshuffleDash = function () { seed += 37.4; shuffle = 1; touched(); };
   ups.push(function (t, dt, amt, idle) {
+    shuffle = Math.max(0, shuffle - dt * 0.8);
     const a = Math.max(amt, idle);
     for (let i = 0; i < dashBars.length; i++) {
-      const h = 0.05 + walk(t * 0.5 + i * 3.7) * 0.26;
-      dashBars[i].scale.y = 0.04 + h * a;
+      const h = 0.05 + walk(t * 0.5 + seed + i * 3.7) * 0.26;
+      // A quick flicker as the new figures come in.
+      dashBars[i].scale.y = 0.04 + h * a * (1 - shuffle * 0.8 * ((i + Math.floor(shuffle * 9)) % 2));
     }
   });
 
@@ -918,6 +944,7 @@ function buildBoardFace(b, face) {
 let boardPivot = null;
 let boardTurned = 0;        // 0 front, 1 back
 let vaultOpen = 0, safeOpen = 0;   // 0 shut, 1 swung wide
+let flickCoin = null, redrawCurve = null;
 
 function animInvesting(group) {
   const ups = [];
@@ -929,12 +956,17 @@ function animInvesting(group) {
   });
   spinner.position.set(2.0, F + 0.49 + 7 * 0.045 + 0.06, 1.5);
   group.add(spinner);
+  const COIN_Y = F + 0.49 + 7 * 0.045 + 0.06;
+  let flick = 0;
+  flickCoin = function () { flick = 1; touched(); };
   ups.push(function (t, dt, amt, idle) {
+    flick = Math.max(0, flick - dt * 0.45);
     const a = Math.max(amt, idle);
-    spinner.rotation.y += dt * (0.6 + 7 * a);
+    spinner.rotation.y += dt * (0.6 + 7 * a + flick * 34);
     // Leaning over as it loses momentum, the way a coin does before it drops.
-    spinner.rotation.z = (0.12 + Math.sin(t * 2.3) * 0.06) * a;
-    spinner.position.y = F + 0.49 + 7 * 0.045 + 0.06 + Math.sin(t * 4.6) * 0.008 * a;
+    spinner.rotation.z = (0.12 + Math.sin(t * 2.3) * 0.06) * a * (1 - flick);
+    spinner.position.y = COIN_Y + Math.sin(t * 4.6) * 0.008 * a
+                       + Math.sin(Math.min(1, flick) * Math.PI) * 0.3;
   });
 
   // The vault door. Hinged on its right edge and swung toward the middle of
@@ -1027,10 +1059,14 @@ function animInvesting(group) {
   const head = part(b => b.box(-0.014, -0.014, 0, 0.028, 0.028, 0.012, 0xcdf3de), true);
   group.add(head);
 
+  // Its own clock rather than the world's, so touching the screen can send it
+  // back to the start of the run.
+  let cyc = 0;
+  redrawCurve = function () { cyc = 0; touched(); };
   ups.push(function (t, dt, amt, idle) {
     const a = Math.max(amt, idle);
+    cyc = (cyc + dt * 0.115) % 1;
     // Asleep it just shows the finished curve; awake it redraws itself.
-    const cyc = (t * 0.115) % 1;
     const p = a > 0.05 ? (cyc < 0.72 ? cyc / 0.72 : 1) : 1;
     for (let i = 0; i < N; i++) {
       const grow = clamp((p - i / (N - 1)) * (N - 1) + 1, 0, 1);
@@ -1106,6 +1142,7 @@ function buildBJJ(b, g) {
 }
 
 let hitBag = null, throwDummy = null;
+let swingBelts = null, knockBottle = null, pullMat = null;
 
 function animBJJ(group) {
   // The bag hangs off the arm and swings, on two frequencies so it never looks
@@ -1166,6 +1203,11 @@ function animBJJ(group) {
   topMat.position.set(-2.7, F + 0.22, 2.6);
   group.add(topMat);
 
+  let swung = 0, knocked = 0, matPulled = false, matOff = 0;
+  swingBelts = function () { swung = 1; touched(); };
+  knockBottle = function () { knocked = 1; touched(); };
+  pullMat = function () { matPulled = !matPulled; touched(); };
+
   // The dummy, on a pivot through its middle so a throw rolls it rather than
   // pushing it through the mat.
   const dummy = new THREE.Group();
@@ -1215,16 +1257,30 @@ function animBJJ(group) {
     // Settling breath, so it is never completely dead on the mat.
     roll.rotation.x = a * Math.sin(t * 0.8) * 0.02;
 
-    // Belts turning on their hangers, each on its own slow beat.
+    // Belts turning on their hangers, each on its own slow beat, plus whatever
+    // is left of a shove.
+    swung = Math.max(0, swung - dt * 0.5);
     for (let i = 0; i < belts.length; i++) {
-      belts[i].rotation.y = Math.sin(t * (0.42 + i * 0.13) + i * 2.1) * 0.26 * a;
+      belts[i].rotation.y = Math.sin(t * (0.42 + i * 0.13) + i * 2.1) * 0.26 * a
+                          + Math.sin(t * 6.2 + i * 1.3) * swung * swung * 0.9;
       belts[i].rotation.z = Math.sin(t * (0.61 + i * 0.09)) * 0.035 * a;
     }
-    bottle.rotation.z = Math.sin(t * 1.9) * 0.07 * a;
+
+    // The bottle: rocking, or knocked over and slowly righting itself.
+    knocked = Math.max(0, knocked - dt * 0.42);
+    const tip = Math.sin(Math.min(1, knocked * 1.6) * Math.PI * 0.5) * 1.45;
+    bottle.rotation.z = Math.sin(t * 1.9) * 0.07 * a + tip;
     bottle.rotation.x = Math.sin(t * 1.4 + 0.8) * 0.05 * a;
-    // The top mat creeps off the stack and back on.
-    topMat.position.x = -2.7 + (0.5 + 0.5 * Math.sin(t * 0.7)) * 0.22 * a;
-    topMat.position.y = F + 0.22 + Math.abs(Math.sin(t * 0.7)) * 0.01 * a;
+    bottle.position.x = 1.0 + Math.sin(tip) * 0.14;
+    bottle.position.y = F + 0.5 - (1 - Math.cos(tip)) * 0.09;
+
+    // The top mat creeps off the stack, or is pulled right off onto the floor.
+    matOff += ((matPulled ? 1 : 0) - matOff) * (1 - Math.pow(0.02, dt));
+    const creep = (0.5 + 0.5 * Math.sin(t * 0.7)) * 0.22 * a * (1 - matOff);
+    topMat.position.x = -2.7 + creep + matOff * 1.25;
+    topMat.position.y = F + 0.22 + Math.abs(Math.sin(t * 0.7)) * 0.01 * a
+                      - matOff * 0.2;
+    topMat.rotation.z = matOff * 0.06;
   }];
 }
 
@@ -1302,6 +1358,7 @@ function buildMusic(b, g) {
 }
 
 let spinDecks = null, burstMeters = null;
+let thumpSpeakers = null, pullRecord = null, playKeys = null;
 
 function animMusic(group) {
   const ups = [];
@@ -1381,28 +1438,51 @@ function animMusic(group) {
     group.add(m);
     keys.push(m);
   }
+  // Touch the crate and one record lifts out of it; touch the synth and it
+  // plays a run up the keys rather than idling.
+  let lifted = -1, liftT = 0, run = 0;
+  pullRecord = function () {
+    lifted = (lifted + 1) % sleeves.length;
+    liftT = 0;
+    touched();
+  };
+  playKeys = function () { run = 0.0001; touched(); };
+
   ups.push(function (t, dt, amt, idle) {
     const a = Math.max(amt, idle);
+    if (lifted >= 0) liftT = Math.min(1, liftT + dt * 0.5);
     for (let i = 0; i < sleeves.length; i++) {
       // A wave running through the crate, front to back.
       const p = Math.sin(t * 1.1 - i * 0.55) * 0.5 + 0.5;
       sleeves[i].rotation.x = -(0.06 + p * 0.3) * a;
+      // The one being pulled rises out, hangs there, and slides back in.
+      const up = i === lifted ? Math.sin(liftT * Math.PI) * 0.42 : 0;
+      sleeves[i].position.y = F + 0.16 + up;
+      if (i === lifted && liftT >= 1) lifted = -1;
+    }
+    if (run > 0) {
+      run += dt * 1.5;
+      if (run > 2.2) run = 0;
     }
     for (let i = 0; i < keys.length; i++) {
-      const on = Math.max(0, Math.sin(t * 2.4 - i * 0.62));
-      keys[i].position.y = F + 0.86 - Math.pow(on, 6) * 0.022 * a;
+      const idleOn = Math.max(0, Math.sin(t * 2.4 - i * 0.62));
+      // A run sweeps one key at a time from the bottom of the board up.
+      const pos = run > 0 ? 1 - Math.min(1, Math.abs(run * keys.length - i) * 1.6) : 0;
+      const on = Math.max(Math.pow(idleOn, 6) * a, pos);
+      keys[i].position.y = F + 0.86 - on * 0.026;
     }
   });
 
   // Touching the mixer pushes everything into the red for a moment.
   let burst = 0;
   burstMeters = function () { burst = 1; touched(); };
+  const pMeter = phaser();
   ups.push(function (t, dt, amt, idle) {
     burst = Math.max(0, burst - dt * 0.35);
     const a = Math.min(1, Math.max(amt, idle) + burst);
+    const k = pMeter(dt, 3.4 + burst * 5);
     for (let i = 0; i < meters.length; i++) {
-      const level = walk(t * (3.4 + burst * 5) + i * 5.1);
-      meters[i].scale.y = 0.02 + (level * 0.1 + burst * 0.07) * a;
+      meters[i].scale.y = 0.02 + (walk(k + i * 5.1) * 0.1 + burst * 0.07) * a;
     }
   });
 
@@ -1420,9 +1500,14 @@ function animMusic(group) {
     g2.add(woof); g2.add(tweet);
     cones.push(woof, tweet);
   }
+  let thump = 0;
+  thumpSpeakers = function () { thump = 1; touched(); };
   ups.push(function (t, dt, amt, idle) {
+    thump = Math.max(0, thump - dt * 1.9);
     const a = Math.max(amt, idle);
-    const pulse = 1 + Math.sin(t * 8.4) * 0.09 * a + Math.sin(t * 3.1) * 0.05 * a;
+    // The thump is one hard shove that rings out, not a faster wobble.
+    const kick = Math.sin(thump * Math.PI * 3) * thump * thump * 0.4;
+    const pulse = 1 + Math.sin(t * 8.4) * 0.09 * a + Math.sin(t * 3.1) * 0.05 * a + kick;
     for (const c of cones) c.scale.set(pulse, 1, pulse);
   });
 
@@ -1526,7 +1611,7 @@ function makeToy(kind, i) {
   return solidMesh(b);
 }
 
-let openChest = null, spillProjects = null;
+let openChest = null, spillProjects = null, toppleCrate = null;
 
 function animProjects(group, def, zone) {
   const ups = [];
@@ -1603,11 +1688,18 @@ function animProjects(group, def, zone) {
   crateTop.rotation.y = -0.15;
   group.add(crateTop);
 
+  let toppled = false, fall = 0;
+  toppleCrate = function () { toppled = !toppled; touched(); };
+
   ups.push(function (t, dt, amt, idle) {
     spill.update(dt);
     const a = Math.max(amt, idle);
-    crateTop.rotation.z = Math.sin(t * 1.7) * 0.035 * a;
-    crateTop.position.y = F + 0.7 + Math.abs(Math.sin(t * 1.7)) * 0.012 * a;
+    fall += ((toppled ? 1 : 0) - fall) * (1 - Math.pow(0.01, dt));
+    // Rocking on the stack, or tipped off the side of it onto the rug.
+    crateTop.rotation.z = Math.sin(t * 1.7) * 0.035 * a * (1 - fall) - fall * 0.5;
+    crateTop.position.x = 2.75 + fall * 0.66;
+    crateTop.position.y = F + 0.7 + Math.abs(Math.sin(t * 1.7)) * 0.012 * a
+                        - fall * 0.5;
 
     open += (openTo - open) * (1 - Math.pow(0.005, dt));
     // A touch past the stop, then back — a lid thrown open, not eased open.
@@ -1716,6 +1808,7 @@ function dogHead(b) {
 
 let petDog = null, toggleLamp = null;
 let spillAboutL = null, spillAboutR = null;
+let wakeLaptop = null, stirMug = null;
 
 function animAbout(group, def, zone) {
   const ups = [];
@@ -1741,12 +1834,16 @@ function animAbout(group, def, zone) {
   rows.rotation.x = -0.22;
   group.add(rows);
 
+  let awake = 1, lit = 1;
+  wakeLaptop = function () { awake = awake ? 0 : 1; touched(); };
+
   ups.push(function (t, dt, amt, idle) {
     left.update(dt);
     right.update(dt);
-    const a = Math.max(amt, idle);
-    cursor.visible = a > 0.05 && (t * 1.7) % 1 < 0.55;
-    rows.visible = a > 0.05;
+    lit += (awake - lit) * (1 - Math.pow(0.004, dt));
+    const a = Math.max(amt, idle) * lit;
+    cursor.visible = a > 0.15 && (t * 1.7) % 1 < 0.55;
+    rows.visible = a > 0.15;
   });
 
   // The dog: breathing all the time, head up and tail going when you arrive.
@@ -1781,18 +1878,21 @@ function animAbout(group, def, zone) {
   let pet = 0;
   petDog = function () { pet = 1; touched(); };
 
+  // Everything of his that speeds up runs on its own accumulated phase.
+  const pBreath = phaser(), pLook = phaser(1.2), pWag = phaser();
+
   ups.push(function (t, dt, amt, idle) {
     pet = Math.max(0, pet - dt * 0.16);
     const a = Math.min(1, Math.max(amt, idle) + pet);
-    const breath = Math.sin(t * (1.5 + pet * 2.4)) * 0.5 + 0.5;
+    const breath = Math.sin(pBreath(dt, 1.5 + pet * 1.6)) * 0.5 + 0.5;
     body.scale.set(1 + breath * 0.02, 1 + breath * (0.025 + pet * 0.03), 1);
     // Asleep his chin is down on his paws; awake his head comes up and he
     // has a look around.
     neck.rotation.x = 0.72 - 0.8 * a + Math.sin(t * 0.9) * 0.03 - pet * 0.16;
-    neck.rotation.y = Math.sin(t * (0.55 + pet * 1.6) + 1.2) * 0.26 * a;
+    neck.rotation.y = Math.sin(pLook(dt, 0.55 + pet * 0.9)) * 0.26 * a;
     neck.rotation.z = Math.sin(t * 0.37) * 0.05 * a;
     // A slow sweep on the cushion most of the time, a proper wag when watched.
-    tailPivot.rotation.y = Math.sin(t * (2.0 + 6.5 * a + pet * 9)) * (0.1 + 0.5 * a);
+    tailPivot.rotation.y = Math.sin(pWag(dt, 2.0 + 4.5 * a + pet * 5)) * (0.1 + 0.5 * a);
     tailPivot.rotation.x = -0.1 - 0.55 * a;
   });
   void zone;
@@ -1821,15 +1921,20 @@ function animAbout(group, def, zone) {
     group.add(m);
     puffs.push(m);
   }
+  let steam = 0;
+  stirMug = function () { steam = 1; touched(); };
+  const pSteam = phaser();
   ups.push(function (t, dt, amt, idle) {
-    const a = Math.max(amt, idle);
+    steam = Math.max(0, steam - dt * 0.3);
+    const a = Math.min(1, Math.max(amt, idle) + steam);
+    const k = pSteam(dt, 0.42 + steam * 0.75);
     for (let i = 0; i < puffs.length; i++) {
-      const p = ((t * 0.42) + i / puffs.length) % 1;
+      const p = (k + i / puffs.length) % 1;
       const m = puffs[i];
-      m.position.y = topY + 0.18 + p * 0.42;
+      m.position.y = topY + 0.18 + p * (0.42 + steam * 0.2);
       m.position.x = 0.58 + Math.sin(p * 5.2 + i) * 0.05;
       m.scale.setScalar(0.5 + p * 1.1);
-      m.material.opacity = a * 0.5 * Math.sin(p * Math.PI);
+      m.material.opacity = a * (0.5 + steam * 0.35) * Math.sin(p * Math.PI);
     }
   });
 
@@ -2231,23 +2336,28 @@ ZONES.forEach(function (def, i) {
   if (def.id === "investing") {
     addDetail(zone, BOARD_X, BOARD_Y, BOARD_Z, BOARD_W, BOARD_H, 3.05, 1.75, 0.3,
                function () { boardTurned = boardTurned ? 0 : 1; touched(); });
-    addDetail(zone, SCR_X, SCR_Y, SCR_Z, SCR_W, SCR_H, 0.66, 0.44, 0.2);
+    swings(addDetail(zone, SCR_X, SCR_Y, SCR_Z, SCR_W, SCR_H, 0.66, 0.44, 0.2,
+                     function () { if (redrawCurve) redrawCurve(); }));
     swings(addDetail(zone, VAULT_X, F + 1.0, VAULT_Z + 0.45, 1.9, 2.0, 1.9, 1.5, 0.34,
                      function () { vaultOpen = vaultOpen ? 0 : 1; touched(); }, 0.3));
     swings(addDetail(zone, SAFE_X, F + 0.5, SAFE_Z + 0.36, 0.95, 1.0, 1.05, 0.8, 0.34,
                      function () { safeOpen = safeOpen ? 0 : 1; touched(); }, 0.3));
-    addDetail(zone, 2.3, F + 0.62, 1.7, 1.5, 0.7, 1.1, 0.8, 0.45);      // the takings
+    swings(addDetail(zone, 2.3, F + 0.62, 1.7, 1.5, 0.7, 1.1, 0.8, 0.45,
+                     function () { if (flickCoin) flickCoin(); }));       // the takings
   }
 
   if (def.id === "bjj") {
     // The two belts are the point of the rack, so this one just frames them.
-    addDetail(zone, 1.35, F + 1.2, -3.05, 2.5, 1.1, 1.5, 0.95, 0.16);
+    swings(addDetail(zone, 1.35, F + 1.2, -3.05, 2.5, 1.1, 1.5, 0.95, 0.16,
+                     function () { if (swingBelts) swingBelts(); }));
     swings(addDetail(zone, DUM_X, DUM_Y, DUM_Z, 1.3, 0.8, 1.5, 1.0, 0.42,
                      function () { if (throwDummy) throwDummy(); }, 1.3));
     swings(addDetail(zone, BAG_X + 0.78, F + 1.0, BAG_Z, 0.7, 1.6, 1.3, 1.1, 0.36,
                      function () { if (hitBag) hitBag(); }, 0.7));
-    addDetail(zone, 0.1, F + 0.6, 3.0, 2.2, 0.9, 1.4, 1.0, 0.4);        // gi on the bench
-    addDetail(zone, -2.7, F + 0.17, 2.6, 1.3, 0.5, 0.95, 0.7, 0.4);     // spare mats
+    swings(addDetail(zone, 0.1, F + 0.6, 3.0, 2.2, 0.9, 1.9, 1.3, 0.4,
+                     function () { if (knockBottle) knockBottle(); }));   // gi and bottle
+    swings(addDetail(zone, -2.7, F + 0.17, 2.6, 1.3, 0.5, 2.2, 1.6, 0.4,
+                     function () { if (pullMat) pullMat(); }));           // spare mats
   }
 
   if (def.id === "music") {
@@ -2256,10 +2366,13 @@ ZONES.forEach(function (def, i) {
     swings(addDetail(zone, 0, DECK_Y + 0.13, -0.5, 0.8, 0.22, 0.7, 0.5, 0.55,
                      function () { if (burstMeters) burstMeters(); }, 0.3));
     for (const side of [-1, 1]) {
-      addDetail(zone, side * 2.6, F + 1.5, 0.5, 0.9, 1.15, 0.9, 0.8, 0.25);
+      swings(addDetail(zone, side * 2.6, F + 1.5, 0.5, 0.9, 1.15, 0.9, 0.8, 0.25,
+                       function () { if (thumpSpeakers) thumpSpeakers(); }));
     }
-    addDetail(zone, 2.5, F + 0.35, -1.9, 1.1, 0.85, 0.9, 0.7, 0.4);     // record crate
-    addDetail(zone, -2.4, F + 0.85, -1.85, 1.9, 0.55, 1.25, 0.85, 0.45); // the synth
+    swings(addDetail(zone, 2.5, F + 0.35, -1.9, 1.1, 0.85, 1.0, 0.85, 0.4,
+                     function () { if (pullRecord) pullRecord(); }));     // record crate
+    swings(addDetail(zone, -2.4, F + 0.85, -1.85, 1.9, 0.55, 1.25, 0.85, 0.45,
+                     function () { if (playKeys) playKeys(); }));         // the synth
   }
 
   if (def.id === "projects") {
@@ -2268,16 +2381,19 @@ ZONES.forEach(function (def, i) {
     // Framed wide, because the point is watching where the books land.
     swings(addDetail(zone, -2.6, F + 0.78, -0.6, 0.9, 1.6, 2.5, 2.0, 0.3,
                      function () { if (spillProjects) spillProjects(); }));
-    addDetail(zone, 2.85, F + 0.55, -1.1, 1.2, 1.3, 1.0, 0.85, 0.3);    // the crates
+    swings(addDetail(zone, 2.85, F + 0.55, -1.1, 1.2, 1.3, 1.9, 1.5, 0.3,
+                     function () { if (toppleCrate) toppleCrate(); }));   // the crates
   }
 
   if (def.id === "about") {
     swings(addDetail(zone, DOG_X, DOG_Y + 0.35, DOG_Z + 0.2, 1.3, 1.0, 1.35, 0.95, 0.3,
                      function () { if (petDog) petDog(); }, 1.0));
-    addDetail(zone, -0.35, ABOUT_TOP + 0.22, 0.3, 0.85, 0.6, 0.65, 0.45, 0.3, null, 0.4);
+    swings(addDetail(zone, -0.35, ABOUT_TOP + 0.22, 0.3, 0.85, 0.6, 0.65, 0.45, 0.3,
+                     function () { if (wakeLaptop) wakeLaptop(); }, 0.4));
     swings(addDetail(zone, -0.96, ABOUT_TOP + 0.4, 0.28, 0.5, 0.72, 0.55, 0.5, 0.25,
                      function () { if (toggleLamp) toggleLamp(); }, 0.35));
-    addDetail(zone, 0.6, ABOUT_TOP + 0.1, 0.38, 0.36, 0.36, 0.34, 0.26, 0.35, null, 0.3);
+    swings(addDetail(zone, 0.6, ABOUT_TOP + 0.1, 0.38, 0.36, 0.36, 0.34, 0.26, 0.35,
+                     function () { if (stirMug) stirMug(); }, 0.3));
     swings(addDetail(zone, -2.6, F + 1.05, -0.5, 0.9, 2.0, 2.8, 2.2, 0.28,
                      function () { if (spillAboutL) spillAboutL(); }));
     swings(addDetail(zone, 2.6, F + 0.85, -0.8, 0.9, 1.6, 2.5, 2.0, 0.28,
@@ -2297,11 +2413,14 @@ ZONES.forEach(function (def, i) {
   if (def.id === "rldatix") {
     swings(addDetail(zone, BED_X, F + 0.75, BED_Z - 0.2, 1.1, 0.5, 1.6, 1.1, 0.42,
                      function () { if (raiseBed) raiseBed(); }, 1.2));
-    addDetail(zone, 2.15, F + 1.28, 1.35, 0.7, 0.5, 0.75, 0.5, 0.3);    // workstation
+    swings(addDetail(zone, 2.15, F + 1.28, 1.35, 0.7, 0.5, 0.75, 0.5, 0.3,
+                     function () { if (reshuffleDash) reshuffleDash(); })); // workstation
     swings(addDetail(zone, BED_X + 0.95, F + 0.7, BED_Z - 1.4, 0.62, 0.46, 0.62, 0.42, 0.2,
                      function () { if (spikeVitals) spikeVitals(); }, 0.25));
-    addDetail(zone, BED_X - 1.35, F + 1.3, BED_Z - 0.5, 0.5, 0.9, 0.7, 0.6, 0.3);
-    addDetail(zone, -2.95, F + 0.85, -0.42, 0.9, 1.7, 1.1, 0.95, 0.25);  // supply cabinet
+    swings(addDetail(zone, BED_X - 1.35, F + 1.3, BED_Z - 0.5, 0.5, 0.9, 0.7, 0.6, 0.3,
+                     function () { if (runDrip) runDrip(); }));           // the IV pole
+    swings(addDetail(zone, -2.95, F + 0.85, -0.42, 0.9, 1.7, 1.1, 0.95, 0.25,
+                     function () { if (openDrawer) openDrawer(); }));     // supply cabinet
     const chart = addDetail(zone, BED_X, CHART_Y, BED_Z + 1.42, 0.82, 0.86,
                             0.55, 0.46, 0.24, null, 0.1);
     CLIPBOARD.lines.forEach(function (line, k) {
