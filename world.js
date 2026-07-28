@@ -94,11 +94,14 @@ const C = {
   aboutFloor:0xe2dbcb,
   rug2:      0xc0ac90,
 
-  // The dog: a sandy ridgeback crossed with a kelpie, in a white bed.
+  // The dog: a sandy ridgeback crossed with a kelpie, in a white bed. `dogPale`
+  // is the lighter sand on his chin and the inside of his ears; `dogSock` is
+  // the actual white, and only four paws and the tip of his tail get it.
   dog:       0xd0a468,
   dogMuzzle: 0xb98a4e,
   dogRidge:  0xba8b50,
   dogPale:   0xe3c99b,
+  dogSock:   0xf4f0e6,
   dogNose:   0x332c27,
   bedRim:    0xfbfaf6,
   bedPad:    0xd9d5ca,
@@ -1813,9 +1816,9 @@ function dogBody(b) {
   b.box(0, 0.39, -0.02, 0.11, 0.035, 0.66, C.dogRidge);        // the ridge
   for (const s of [-1, 1]) {
     b.box(s * 0.21, 0.02, -0.3, 0.13, 0.28, 0.4, C.dog);       // hind legs, folded
-    b.box(s * 0.19, 0.0, -0.44, 0.15, 0.14, 0.16, C.dogPale);  // hind paws
+    b.box(s * 0.19, 0.0, -0.44, 0.15, 0.14, 0.16, C.dogSock);  // hind paws, white
     b.box(s * 0.12, 0.0, 0.32, 0.14, 0.15, 0.38, C.dog);       // forelegs, stretched
-    b.box(s * 0.12, 0.0, 0.6, 0.16, 0.12, 0.16, C.dogPale);    // front paws
+    b.box(s * 0.12, 0.0, 0.6, 0.16, 0.12, 0.16, C.dogSock);    // front paws, white
   }
 }
 
@@ -1893,10 +1896,15 @@ function animAbout(group, def, zone) {
   const tailPivot = new THREE.Group();
   tailPivot.position.set(0, 0.14, -0.5);
   dog.add(tailPivot);
+  /* Swept round beside his hip, in three lengths that each turn a little more
+     than the last. It has to curl: the pivot already sits half a unit back from
+     the middle of the bed, so a tail pointing straight out behind him is longer
+     than the bed has room for and hangs out through the side of it. Curled, the
+     whole thing including the white tip stays over the cushion. */
   const tail = part(function (b) {
-    b.box(-0.05, -0.05, -0.26, 0.1, 0.1, 0.3, C.dog);
-    b.box(-0.045, -0.055, -0.5, 0.09, 0.09, 0.26, C.dog);
-    b.box(-0.04, -0.065, -0.68, 0.08, 0.08, 0.14, C.dogPale);
+    b.boxC(0.092, 0.00, -0.092, 0.10, 0.10, 0.26, C.dog, 0, -0.79, 0);
+    b.boxC(0.283, -0.01, -0.220, 0.09, 0.09, 0.21, C.dog, 0, -1.22, 0);
+    b.boxC(0.446, -0.02, -0.258, 0.08, 0.08, 0.13, C.dogSock, 0, -1.54, 0);  // white tip
   });
   tailPivot.add(tail);
 
@@ -1920,8 +1928,10 @@ function animAbout(group, def, zone) {
     neck.rotation.y = Math.sin(pLook(dt, 0.55 + pet * 0.9)) * 0.26 * a;
     neck.rotation.z = Math.sin(t * 0.37) * 0.05 * a;
     // A slow sweep on the cushion most of the time, a proper wag when watched.
+    // Wag round on Y, lift on Z — the tail lies out to his side, so what raises
+    // it is a roll, not a pitch. Euler order puts the lift first, then the wag.
     tailPivot.rotation.y = Math.sin(pWag(dt, 2.0 + 4.5 * a + pet * 5)) * (0.1 + 0.5 * a);
-    tailPivot.rotation.x = -0.1 - 0.55 * a;
+    tailPivot.rotation.z = 0.06 + 0.3 * a;
   });
   void zone;
 
@@ -2532,6 +2542,57 @@ const want = {
 
 let userMoved = false;
 
+/* ---- Travelling to a view -----------------------------------------------------
+   Picking a scene is a journey, not a cut, so the camera works out the whole
+   trip up front and then flies it: where it is now, where it is going, the
+   short way round, and how long that ought to take.
+
+   Two things this fixes. An azimuth is a bearing, and every bearing has
+   infinitely many names — the island at 0.34 is also at 6.62 and at -5.94. The
+   camera's own azimuth wanders wherever dragging leaves it, so subtracting one
+   raw number from another sent it three-quarters of the way round the ring to
+   reach a neighbour. And the old easing was an exponential chase, which is at
+   its fastest the instant you tap and crawls at the end: it read as a snap
+   followed by a settle rather than a move. A fixed duration eased at both ends
+   leaves and arrives gently, and the duration grows with the distance, so
+   stepping next door stays brisk while crossing the ring takes its time. */
+
+const TAU = Math.PI * 2;
+const MOVE_MIN = 0.55;   // seconds, for a move that barely turns
+const MOVE_MAX = 1.3;    // and the cap, for the far side of the ring
+
+/** The same bearing, renamed as whichever of its infinite names is nearest
+    `from` — so the difference between them is never more than half a turn. */
+function nearestAz(target, from) {
+  let d = (target - from + Math.PI) % TAU;
+  if (d < 0) d += TAU;
+  return from + d - Math.PI;
+}
+
+const from = {
+  az: HOME.az, el: HOME.el, fitH: HOME.fitH, fitV: HOME.fitV,
+  scale: 1, sx: 0, sy: 0, target: HOME.target.clone()
+};
+let moveT = 1, moveDur = MOVE_MIN;
+
+/** Begin the flight to whatever `want` now holds. */
+function startMove() {
+  want.az = nearestAz(want.az, cam.az);
+  from.az = cam.az;
+  from.el = cam.el;
+  from.fitH = cam.fitH;
+  from.fitV = cam.fitV;
+  from.scale = cam.scale;
+  from.sx = cam.sx;
+  from.sy = cam.sy;
+  from.target.copy(cam.target);
+  moveDur = Math.min(MOVE_MAX, MOVE_MIN + Math.abs(want.az - cam.az) * 0.26);
+  moveT = 0;
+}
+
+/** Drop out of a flight, for when the visitor takes the camera themselves. */
+function stopMove() { moveT = 1; }
+
 function applyCamera() {
   const R = 90;
   camera.position.set(
@@ -2592,6 +2653,7 @@ canvas.addEventListener("pointermove", function (e) {
 
   if (!dragging) return;
   movedBy += Math.abs(dx) + Math.abs(dy);
+  stopMove();               // a hand on the world outranks a flight in progress
   want.az -= dx * 0.0085;
   want.el = clamp(want.el + dy * 0.006, 0.22, 1.36);
   cam.az = want.az;
@@ -2643,6 +2705,7 @@ function groundPoint(px, py) {
     get close to one belt or one line on a whiteboard rather than always to the
     middle of an island. */
 function zoomAt(px, py, factor) {
+  stopMove();
   const before = want.scale;
   want.scale = clamp(before * factor, 0.12, 1.9);
   const k = 1 - want.scale / before;
@@ -2741,6 +2804,8 @@ function focusDetail(d) {
     want.target.y += FOCUS_LIFT;
   }
 
+  startMove();
+
   // Things that do something mechanical — a safe door, a dummy on the mat —
   // should do it the moment you touch them, not on a second tap. Tapping again
   // runs it again, through the branch above.
@@ -2769,6 +2834,7 @@ function focusZone(zone) {
   want.sx = 0;
   want.sy = 0;
   want.target.set(zone.group.position.x, small ? 2.1 : 1.4, zone.group.position.z);
+  startMove();
 
   document.body.classList.add("focused");
   refreshGates();
@@ -2861,6 +2927,7 @@ function clearFocus() {
   want.sx = 0;
   want.sy = 0;
   want.target.copy(HOME.target);
+  startMove();
   document.body.classList.remove("focused");
   refreshGates();
   refreshCards();
@@ -3024,15 +3091,34 @@ function frame(now) {
   last = now;
   const t = now / 1000;
 
-  const k = 1 - Math.pow(0.0016, dt);
-  cam.az += (want.az - cam.az) * k;
-  cam.el += (want.el - cam.el) * k;
-  cam.fitH += (want.fitH - cam.fitH) * k;
-  cam.fitV += (want.fitV - cam.fitV) * k;
-  cam.scale += (want.scale - cam.scale) * k;
-  cam.sx += (want.sx - cam.sx) * k;
-  cam.sy += (want.sy - cam.sy) * k;
-  cam.target.lerp(want.target, k);
+  if (moveT < 1) {
+    // A planned flight: a fixed run, eased at both ends, along the route
+    // startMove() worked out. Slow away, quick through the middle, slow in.
+    moveT = Math.min(1, moveT + dt / moveDur);
+    const e = moveT < 0.5
+      ? 4 * moveT * moveT * moveT
+      : 1 - Math.pow(-2 * moveT + 2, 3) / 2;
+    cam.az = from.az + (want.az - from.az) * e;
+    cam.el = from.el + (want.el - from.el) * e;
+    cam.fitH = from.fitH + (want.fitH - from.fitH) * e;
+    cam.fitV = from.fitV + (want.fitV - from.fitV) * e;
+    cam.scale = from.scale + (want.scale - from.scale) * e;
+    cam.sx = from.sx + (want.sx - from.sx) * e;
+    cam.sy = from.sy + (want.sy - from.sy) * e;
+    cam.target.lerpVectors(from.target, want.target, e);
+  } else {
+    // Everything else — the opening zoom-out, a pinch, a window resize — is a
+    // target that keeps shifting under the camera, so it just chases.
+    const k = 1 - Math.pow(0.0016, dt);
+    cam.az += (want.az - cam.az) * k;
+    cam.el += (want.el - cam.el) * k;
+    cam.fitH += (want.fitH - cam.fitH) * k;
+    cam.fitV += (want.fitV - cam.fitV) * k;
+    cam.scale += (want.scale - cam.scale) * k;
+    cam.sx += (want.sx - cam.sx) * k;
+    cam.sy += (want.sy - cam.sy) * k;
+    cam.target.lerp(want.target, k);
+  }
   applyCamera();
 
   const ease = 1 - Math.pow(0.006, dt);

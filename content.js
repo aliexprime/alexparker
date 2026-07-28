@@ -34,8 +34,7 @@ export const ZONES = [
 
   {
     id: "bjj",
-    label: "Jiu-jitsu",
-    todo: "The belt rack has both belts on it — zoom in. Nothing names the gym — say if you want it lettered onto the mats or the rack."
+    label: "Jiu-jitsu"
   },
 
   {
