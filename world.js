@@ -1976,7 +1976,7 @@ function animAbout(group, def, zone) {
     // Wag round on Y, lift on Z — the tail lies out to his side, so what raises
     // it is a roll, not a pitch. Euler order puts the lift first, then the wag.
     tailPivot.rotation.y = Math.sin(pWag(dt, 2.0 + 4.5 * a + pet * 5)) * (0.1 + 0.5 * a);
-    tailPivot.rotation.z = 0.06 + 0.3 * a;
+    tailPivot.rotation.z = 0.05 + 0.17 * a;
   });
   void zone;
 
@@ -2251,23 +2251,23 @@ const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 240);
                 describes a shape and a short one only proves it is there.
    rim          cold, from behind and low, so silhouettes come off a cream
                 background rather than dissolving into it. */
-scene.add(new THREE.HemisphereLight(0xfff4e4, 0x8b93a2, 0.86));
+/* The ground half of this is warm, not the cool grey it was. What bounces up
+   into the underside of a chair leg is whatever the chair is standing on, and
+   everything here stands on a cream floor. The cool stays where it belongs, in
+   the fill and the rim, which is what keeps the warm/cool split. */
+scene.add(new THREE.HemisphereLight(0xfff4e4, 0xa8977f, 0.84));
+
+const SUN_DIR = new THREE.Vector3(14, 15, 10).normalize();
+const SUN_DIST = 34;
 
 const sun = new THREE.DirectionalLight(0xfff0d6, 2.25);
-sun.position.set(14, 15, 10);
 sun.castShadow = true;
 sun.shadow.mapSize.set(1024, 1024);
-// Wrapped tight around the ring: the smaller the frustum, the more shadow
-// texels land on the thing casting the shadow.
-sun.shadow.camera.left = -17;
-sun.shadow.camera.right = 17;
-sun.shadow.camera.top = 17;
-sun.shadow.camera.bottom = -17;
 sun.shadow.camera.near = 1;
-sun.shadow.camera.far = 62;
-sun.shadow.bias = -0.0012;
+sun.shadow.camera.far = SUN_DIST * 2.4;
 sun.shadow.normalBias = 0.045;  // stops the stepped cylinders self-shadowing
 scene.add(sun);
+scene.add(sun.target);
 
 const fill = new THREE.DirectionalLight(0xdce6f4, 0.34);
 fill.position.set(-11, 7, -6);
@@ -2276,6 +2276,74 @@ scene.add(fill);
 const rim = new THREE.DirectionalLight(0xb6ccE4, 0.55);
 rim.position.set(-9, 4, -13);
 scene.add(rim);
+
+/* ---- Where the sun points, and how tightly ------------------------------------
+
+   A directional light's shadow map is a fixed number of texels spread over
+   whatever the shadow camera covers, so covering the whole ring at once means
+   every shadow in it is coarse. Wrapped around all seven islands each texel is
+   about 17mm across, while a focused view puts a screen pixel at about 9mm —
+   so shadow edges were nearly twice as blocky as the pixels they sat in, which
+   is the one place the picture stopped being crisp.
+
+   Nothing needs the whole ring sharp at once. So the shadow camera follows
+   whatever you are looking at and pulls in tight around it, which is a four to
+   five times finer shadow exactly where you are looking, and finer than the
+   pixel grid — so shadow edges land on pixel boundaries and stay there.
+
+   The catch is that a shadow camera which moves smoothly makes its shadows
+   crawl, because the texel grid slides underneath the geometry. The fix is to
+   never place it between texels: work out where it wants to be, then round
+   that to a whole number of texels in the light's own frame. The grid then
+   moves in whole steps and the shadows sit still. */
+
+const RING_HALF = 17;              // enough for every island at once
+
+/** How wide the shadow camera has to be to cover what the eye camera frames,
+    plus enough margin that something standing just out of shot still throws its
+    shadow into it — the sun is about forty degrees up, so the tallest things
+    here reach a couple of units past themselves.
+
+    Rounded up to whole units so that it settles on a size and stays there: a
+    frustum that resizes every frame resizes its texels too, and shadows that
+    sit on a grid which is always changing shimmer. */
+function sunHalfFor(fit) {
+  return clamp(Math.ceil(fit * 1.12 + 1.6), 2, RING_HALF);
+}
+
+// An orthonormal frame for the light, so a position can be rounded to texels.
+const _lz = SUN_DIR.clone();
+const _lx = new THREE.Vector3(0, 1, 0).cross(_lz).normalize();
+const _ly = new THREE.Vector3().crossVectors(_lz, _lx).normalize();
+const _aim = new THREE.Vector3();
+const _aimWide = new THREE.Vector3();
+let shadowHalf = -1;
+
+function aimSun(target, half) {
+  const texel = (half * 2) / sun.shadow.mapSize.x;
+  // Round the aim point to whole texels, along the light's own two axes.
+  const u = Math.round(target.dot(_lx) / texel) * texel;
+  const v = Math.round(target.dot(_ly) / texel) * texel;
+  const w = target.dot(_lz);
+  _aim.copy(_lx).multiplyScalar(u)
+      .addScaledVector(_ly, v)
+      .addScaledVector(_lz, w);
+
+  sun.target.position.copy(_aim);
+  sun.position.copy(_aim).addScaledVector(SUN_DIR, SUN_DIST);
+
+  if (half !== shadowHalf) {
+    shadowHalf = half;
+    const c = sun.shadow.camera;
+    c.left = -half; c.right = half; c.top = half; c.bottom = -half;
+    // Depth precision is spread over the same near/far however wide the
+    // frustum is, so the bias that a wide one needs makes a tight one leak
+    // light under things. Scale it with the area it is covering.
+    sun.shadow.bias = -0.0012 * (half / RING_HALF);
+    c.updateProjectionMatrix();
+  }
+  sun.target.updateMatrixWorld();
+}
 
 const world = new THREE.Group();
 scene.add(world);
@@ -2564,6 +2632,10 @@ for (const def of ZONES) {
 ============================================================================= */
 
 let cssW = 1, cssH = 1;
+// The rendered buffer's aspect, which is the window's only by accident — see
+// resize(). Everything that frames or picks has to use this one.
+let renderAspect = 1;
+
 
 function homeFor() {
   // Standing more overhead on a tall screen puts the height to work instead of
@@ -2647,7 +2719,7 @@ function applyCamera() {
   );
   camera.lookAt(cam.target);
 
-  const aspect = cssW / cssH;
+  const aspect = renderAspect;
   const fh = cam.fitH * cam.scale, fv = cam.fitV * cam.scale;
   const w = Math.max(fh, fv * aspect);      // whichever axis is the binding one
   const h = w / aspect;
@@ -2737,10 +2809,19 @@ let hovered = null;
 const _plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
 const _hit = new THREE.Vector3();
 
+/* A pointer position, in the -1..1 the raycaster wants. Measured against the
+   canvas rather than the window: the canvas is a whole number of pixel blocks
+   and so is very slightly larger than the window, and centred in it, so the two
+   no longer share an origin. */
+function toNdc(px, py) {
+  const r = canvas.getBoundingClientRect();
+  ndc.x = ((px - r.left) / Math.max(1, r.width)) * 2 - 1;
+  ndc.y = -((py - r.top) / Math.max(1, r.height)) * 2 + 1;
+}
+
 /** Where the pointer lands on the horizontal plane through the camera target. */
 function groundPoint(px, py) {
-  ndc.x = (px / cssW) * 2 - 1;
-  ndc.y = -(py / cssH) * 2 + 1;
+  toNdc(px, py);
   ray.setFromCamera(ndc, camera);
   _plane.constant = -want.target.y;
   return ray.ray.intersectPlane(_plane, _hit) ? _hit : null;
@@ -2773,8 +2854,7 @@ function zoomAt(px, py, factor) {
 /* Details sit inside a zone's own hit box, so they are tested first — a tap on
    the whiteboard should get you the whiteboard, not the island it stands on. */
 function pick(px, py) {
-  ndc.x = (px / cssW) * 2 - 1;
-  ndc.y = -(py / cssH) * 2 + 1;
+  toNdc(px, py);
   ray.setFromCamera(ndc, camera);
   const dh = ray.intersectObjects(detailHits, false);
   for (const hit of dh) {
@@ -3091,14 +3171,48 @@ function resize() {
   cssW = Math.max(1, window.innerWidth);
   cssH = Math.max(1, window.innerHeight);
 
-  // The whole pixel-art effect: render small, let CSS scale it up. The divisor
-  // is the only dial that matters — smaller means finer pixels and more of
-  // them. Keep the two in step so a phone is not noticeably chunkier than a
-  // desktop, and let big displays run further before the cap bites.
-  const div = cssW < 700 ? 1.04 : 1.23;
-  const w = clamp(Math.round(cssW / div), 320, 1700);
-  const h = Math.max(1, Math.round(w * (cssH / cssW)));
+  /* The whole pixel-art effect is to render small and scale up. What decides
+     whether that reads as pixel art or as a low-resolution image is whether
+     the scale factor is a whole number.
+
+     It was not. Rendering 1171 wide into a 1440 window is a scale of 1.23, and
+     the browser, told to scale without smoothing, has to make some source
+     pixels one screen pixel wide and others two. So the grid was never square
+     and never even, and every pixel changed size as the camera moved. That is
+     the difference between pixel art and a blown-up JPEG.
+
+     So work in device pixels, pick a WHOLE number of them per rendered pixel,
+     and size the canvas to exactly that multiple. Every pixel is then the same
+     square, and edges stay put. The canvas ends up at most one pixel-block
+     larger than the window, which is why it is centred and the body clips. */
+  const dpr = clamp(window.devicePixelRatio || 1, 1, 3);
+  const devW = Math.max(1, Math.round(cssW * dpr));
+  const devH = Math.max(1, Math.round(cssH * dpr));
+
+  /* Aim for a number of pixels across and let the device ratio fall where it
+     may, rather than the other way round. Two screens the same size with
+     different ratios then get the same picture: a plain 1440 monitor puts two
+     device pixels into each one, a retina 1440 puts four, and both end up
+     drawing the same 720-wide world. Resolution is what decides whether the
+     lettering on a whiteboard can be read, so it is the thing to hold still.
+
+     Never below two device pixels to one, or there is no pixel art left. */
+  const target = cssW < 700 ? 400 : 820;
+  const scale = Math.max(2, Math.round(devW / target));
+
+  const w = Math.ceil(devW / scale);
+  const h = Math.max(1, Math.ceil(devH / scale));
   renderer.setSize(w, h, false);
+
+  // Back to CSS pixels for the layout. Fractions are fine and wanted here: the
+  // grid that has to stay whole is the device-pixel one, and this is the value
+  // that keeps it whole.
+  canvas.style.width = (w * scale / dpr) + "px";
+  canvas.style.height = (h * scale / dpr) + "px";
+
+  // The camera has to frame what is actually rendered, not the window, since
+  // the two now differ by up to one pixel block.
+  renderAspect = w / h;
 
   const shadowRes = cssW < 700 ? 1024 : 2048;
   if (sun.shadow.mapSize.x !== shadowRes) {
@@ -3165,6 +3279,18 @@ function frame(now) {
     cam.target.lerp(want.target, k);
   }
   applyCamera();
+
+  /* Point the sun's shadow at whatever is being read. Aimed at where the
+     camera is looking rather than at the island itself, so a detail you have
+     zoomed right into is dead centre of the sharp region. Once the whole ring
+     is in view, back out to covering all of it — a shadow that is one screen
+     pixel wide does not need any more resolution than that. */
+  if (activeZone) {
+    aimSun(cam.target, sunHalfFor(Math.max(cam.fitH, cam.fitV) * cam.scale));
+  } else {
+    _aimWide.set(0, 1.1, 0);
+    aimSun(_aimWide, RING_HALF);
+  }
 
   const ease = 1 - Math.pow(0.006, dt);
   for (const zone of zones) {

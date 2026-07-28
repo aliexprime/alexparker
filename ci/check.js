@@ -149,8 +149,12 @@ async function run(page, vp, label) {
     await run(await desk.newPage(), { width: 1440, height: 900 }, "desktop");
 
     console.log("\nmobile:");
+    // A real phone, three device pixels to the CSS pixel. It matters: the
+    // renderer sizes itself in device pixels, so a phone-sized window at a
+    // desktop's ratio is not the case worth testing.
     const phone = await browser.newContext({
-      viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true
+      viewport: { width: 390, height: 844 },
+      deviceScaleFactor: 3, isMobile: true, hasTouch: true
     });
     await run(await phone.newPage(), { width: 390, height: 844 }, "mobile");
   } finally {

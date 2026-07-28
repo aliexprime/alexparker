@@ -34,15 +34,19 @@
     /* ---- The world ------------------------------------------------------ */
 
     canvas#stage {
+      /* Sized in script, not here. The scene renders small and is scaled up,
+         and it is scaled by a whole number of device pixels so that every
+         pixel is the same square — which means the canvas comes out a fraction
+         larger than the window, and is centred with the overflow clipped. A
+         percentage width would put us back to a fractional scale and an uneven
+         grid, which is the thing this is all avoiding. */
       position: fixed;
-      inset: 0;
-      width: 100%;
-      height: 100%;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
       display: block;
       z-index: 0;
       touch-action: none;
-      /* The scene renders small and is scaled up here — this is what makes
-         real 3D read as pixel art. */
       image-rendering: pixelated;
       image-rendering: crisp-edges;
       cursor: grab;
