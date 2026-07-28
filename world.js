@@ -444,6 +444,78 @@ function shelf(b, x, z, w, h, ry, seed) {
   }
 }
 
+/* ---- Books off a shelf ------------------------------------------------------
+
+   A bookcase is the one thing in a room that has an obvious thing to do: knock
+   it and books come out. Each one gets a small pool of loose books that start
+   tucked inside the case and are thrown out on the shelf's own facing when it
+   is touched. They fall under gravity, tumble, and lie where they land. Touch
+   it again and the same books go again — the pool never grows.
+
+   `ry` is the shelf's rotation, so local +z is the way it faces. */
+function bookSpill(group, x, z, ry, w, h, seed) {
+  const r = rng(seed);
+  const books = [];
+  const fwd = [Math.sin(ry), 0, Math.cos(ry)];       // local +z, in world terms
+  const side = [Math.cos(ry), 0, -Math.sin(ry)];     // local +x
+
+  for (let i = 0; i < 5; i++) {
+    const bw = 0.07 + r() * 0.05, bh = 0.2 + r() * 0.1;
+    const m = part(function (b) {
+      b.box(-bw / 2, -bh / 2, -0.12, bw, bh, 0.24, BOOKS[(r() * BOOKS.length) | 0]);
+      b.box(-bw / 2 + 0.012, -bh / 2 + 0.01, -0.115, bw - 0.024, bh - 0.02, 0.235, C.paper);
+    });
+    m.visible = false;
+    group.add(m);
+    books.push({
+      m: m,
+      half: bh / 2,
+      lx: (r() - 0.4) * (w - 0.3),                   // which slot it comes from
+      ly: 0.35 + r() * (h - 0.7),
+      out: 0.55 + r() * 0.85,                        // how hard it is thrown
+      drift: (r() - 0.5) * 0.7,
+      up: 1.1 + r() * 1.1,
+      spin: (r() - 0.5) * 9,
+      tumble: 3 + r() * 5,
+      delay: i * 0.07 + r() * 0.06,
+      t: 0, live: false
+    });
+  }
+
+  function throwOut() {
+    for (const b of books) { b.t = -b.delay; b.live = true; b.m.visible = false; }
+    touched();
+  }
+
+  function update(dt) {
+    for (const b of books) {
+      if (!b.live) continue;
+      b.t += dt;
+      if (b.t < 0) continue;
+      b.m.visible = true;
+      // Straight out of the case, falling, until it reaches the floor.
+      const y = F + b.ly + b.up * b.t - 4.6 * b.t * b.t;
+      const rest = F + 0.02 + b.half * 0.55;
+      const d = b.out * b.t;
+      const s = b.drift * b.t;
+      b.m.position.set(
+        x + fwd[0] * (0.24 + d) + side[0] * (b.lx + s),
+        Math.max(rest, y),
+        z + fwd[2] * (0.24 + d) + side[2] * (b.lx + s)
+      );
+      if (y <= rest) {
+        // Landed: lie flat, and stop.
+        b.m.rotation.set(Math.PI / 2, b.spin, 0);
+        b.live = false;
+      } else {
+        b.m.rotation.set(b.tumble * b.t, b.spin * b.t * 0.4, b.tumble * 0.6 * b.t);
+      }
+    }
+  }
+
+  return { throwOut: throwOut, update: update };
+}
+
 function pottedPlant(b, x, z, scale) {
   const s = scale || 1;
   b.cyl(x, F, z, 0.19 * s, 0.15 * s, 0.26 * s, 8, C.pot);
@@ -571,10 +643,9 @@ function buildRLDatix(b, g) {
   // Tall things live on the side edges only.
   b.box(-2.95, F, -0.7, 0.85, 1.7, 0.55, C.white);
   b.box(-2.95, F + 0.05, -0.42, 0.72, 0.5, 0.04, 0xdde6e7);
-  b.box(-2.95, F + 0.6, -0.42, 0.72, 0.5, 0.04, 0xdde6e7);
   b.box(-2.95, F + 1.15, -0.42, 0.72, 0.44, 0.04, 0xdde6e7);
   b.box(-2.68, F + 0.28, -0.4, 0.1, 0.05, 0.05, C.metal);
-  b.box(-2.68, F + 0.83, -0.4, 0.1, 0.05, 0.05, C.metal);
+  // The middle drawer slides out — see animRLDatix.
 
   b.box(2.95, F, -0.9, 0.62, 0.86, 1.9, C.white);
   b.box(2.95, F + 0.86, -0.9, 0.7, 0.08, 2.0, 0xe4ebec);
@@ -633,6 +704,19 @@ function animRLDatix(group) {
     trace.add(m);
     bars.push(m);
   }
+  // The middle drawer of the supply cabinet eases out when the ward is awake.
+  const drawer = part(function (b) {
+    b.box(-2.95, F + 0.6, -0.42, 0.72, 0.5, 0.04, 0xdde6e7);
+    b.box(-2.68, F + 0.83, -0.4, 0.1, 0.05, 0.05, C.metal);
+    b.box(-2.95, F + 0.62, -0.58, 0.66, 0.42, 0.3, 0xeef3f2);   // the tray behind it
+    b.box(-2.95, F + 0.66, -0.6, 0.5, 0.1, 0.2, 0xc9d6d8);      // and what is in it
+  });
+  group.add(drawer);
+  ups.push(function (t, dt, amt, idle) {
+    const a = Math.max(amt, idle);
+    drawer.position.z = a * (0.2 + Math.sin(t * 0.9) * 0.04);
+  });
+
   // Touching the monitor runs the trace hot for a few seconds.
   let spike = 0;
   spikeVitals = function () { spike = 1; touched(); };
@@ -838,6 +922,21 @@ let vaultOpen = 0, safeOpen = 0;   // 0 shut, 1 swung wide
 function animInvesting(group) {
   const ups = [];
 
+  // A coin left spinning on the table with the takings on it.
+  const spinner = part(function (b) {
+    b.cylC(0, 0, 0, 0.11, 0.11, 0.045, 10, C.brass, Math.PI / 2, 0, 0);
+    b.cylC(0, 0, 0.024, 0.07, 0.07, 0.01, 10, 0xe2c274, Math.PI / 2, 0, 0);
+  });
+  spinner.position.set(2.0, F + 0.49 + 7 * 0.045 + 0.06, 1.5);
+  group.add(spinner);
+  ups.push(function (t, dt, amt, idle) {
+    const a = Math.max(amt, idle);
+    spinner.rotation.y += dt * (0.6 + 7 * a);
+    // Leaning over as it loses momentum, the way a coin does before it drops.
+    spinner.rotation.z = (0.12 + Math.sin(t * 2.3) * 0.06) * a;
+    spinner.position.y = F + 0.49 + 7 * 0.045 + 0.06 + Math.sin(t * 4.6) * 0.008 * a;
+  });
+
   // The vault door. Hinged on its right edge and swung toward the middle of
   // the room, which is the only direction with nothing in the way.
   const vaultDoor = new THREE.Group();
@@ -984,18 +1083,7 @@ function buildBJJ(b, g) {
   b.box(rx + 1.15, F, rz, 0.14, 1.9, 0.14, C.woodDark);
   b.box(rx, F + 1.78, rz, 2.4, 0.1, 0.1, C.wood);
 
-  // White belt, two stripes taped across the bar.
-  const wx = rx - 0.46;
-  b.box(wx, F + 0.96, rz, 0.28, 0.82, 0.08, C.beltWhite);
-  b.box(wx, F + 1.02, rz, 0.3, 0.36, 0.1, C.beltBlack);          // the rank bar
-  b.box(wx, F + 1.10, rz, 0.32, 0.055, 0.12, C.beltWhite);       // tape, across
-  b.box(wx, F + 1.21, rz, 0.32, 0.055, 0.12, C.beltWhite);
-
-  // Taekwondo black belt, one gold stripe across it.
-  const kx = rx + 0.56;
-  b.box(kx, F + 0.96, rz, 0.28, 0.82, 0.08, C.beltBlack);
-  b.box(kx, F + 1.02, rz, 0.3, 0.36, 0.1, 0x201e1c);
-  b.box(kx, F + 1.15, rz, 0.32, 0.065, 0.12, C.brass);
+  // Both belts hang off the bar and sway, so they are meshes — see animBJJ.
 
   // A gi folded on a bench, off the mat.
   b.box(0.3, F, 3.0, 2.0, 0.42, 0.55, C.woodDark);
@@ -1004,14 +1092,13 @@ function buildBJJ(b, g) {
   b.box(-0.2, F + 0.66, 3.0, 0.56, 0.1, 0.38, 0xd6d4cb);
   b.box(0.26, F + 0.5, 3.0, 0.2, 0.08, 0.32, C.beltWhite);
   b.box(0.26, F + 0.5, 3.0, 0.09, 0.09, 0.34, 0x2f2c2a);
-  b.cyl(1.0, F + 0.5, 3.0, 0.09, 0.09, 0.28, 8, 0x7fb0c4);
-  b.cyl(1.0, F + 0.78, 3.0, 0.05, 0.05, 0.06, 8, C.metalDark);
+  // The drink bottle rocks — see animBJJ.
 
   // The dummy is left out on the mat, and gets thrown when you touch it, so
   // it is built in animBJJ rather than here.
 
-  // Spare mats stacked in the corner.
-  for (let i = 0; i < 3; i++) {
+  // Spare mats stacked in the corner. The top one slides — see animBJJ.
+  for (let i = 0; i < 2; i++) {
     b.box(-2.7, F + i * 0.11, 2.6, 1.15, 0.11, 0.8, i % 2 ? C.matA : C.matB, 0.2);
   }
   pottedPlant(b, 2.8, 2.6, 1.0);
@@ -1037,6 +1124,47 @@ function animBJJ(group) {
   // being another steady sine on top of the idle one.
   let hit = 0, hitAt = 0;
   hitBag = function () { hit = 1; hitAt = 0; touched(); };
+
+  // The two belts, each hanging off the bar on its own pivot. Both are real:
+  // the white one being worn now, and the taekwondo belt from before.
+  const RX = 1.35, RZ = -3.05, BAR = F + 1.78;
+  const belts = [];
+  for (const spec of [
+    { x: RX - 0.46, body: C.beltWhite, bar: C.beltBlack, tape: C.beltWhite, two: true },
+    { x: RX + 0.56, body: C.beltBlack, bar: 0x201e1c, tape: C.brass, two: false }
+  ]) {
+    const pivot = new THREE.Group();
+    pivot.position.set(spec.x, BAR, RZ);
+    group.add(pivot);
+    pivot.add(part(function (b) {
+      const y0 = -(BAR);
+      b.box(0, y0 + F + 0.96, 0, 0.28, 0.82, 0.08, spec.body);
+      b.box(0, y0 + F + 1.02, 0, 0.3, 0.36, 0.1, spec.bar);
+      if (spec.two) {
+        b.box(0, y0 + F + 1.10, 0, 0.32, 0.055, 0.12, spec.tape);
+        b.box(0, y0 + F + 1.21, 0, 0.32, 0.055, 0.12, spec.tape);
+      } else {
+        b.box(0, y0 + F + 1.15, 0, 0.32, 0.065, 0.12, spec.tape);
+      }
+    }));
+    belts.push(pivot);
+  }
+
+  // The drink bottle left on the bench, rocking on its base.
+  const bottle = new THREE.Group();
+  bottle.position.set(1.0, F + 0.5, 3.0);
+  group.add(bottle);
+  bottle.add(part(function (b) {
+    b.cyl(0, 0, 0, 0.09, 0.09, 0.28, 8, 0x7fb0c4);
+    b.cyl(0, 0.28, 0, 0.05, 0.05, 0.06, 8, C.metalDark);
+  }));
+
+  // The top spare mat, half pulled off the stack.
+  const topMat = part(function (b) {
+    b.box(0, 0, 0, 1.15, 0.11, 0.8, C.matA, 0.2);
+  });
+  topMat.position.set(-2.7, F + 0.22, 2.6);
+  group.add(topMat);
 
   // The dummy, on a pivot through its middle so a throw rolls it rather than
   // pushing it through the mat.
@@ -1086,6 +1214,17 @@ function animBJJ(group) {
     }
     // Settling breath, so it is never completely dead on the mat.
     roll.rotation.x = a * Math.sin(t * 0.8) * 0.02;
+
+    // Belts turning on their hangers, each on its own slow beat.
+    for (let i = 0; i < belts.length; i++) {
+      belts[i].rotation.y = Math.sin(t * (0.42 + i * 0.13) + i * 2.1) * 0.26 * a;
+      belts[i].rotation.z = Math.sin(t * (0.61 + i * 0.09)) * 0.035 * a;
+    }
+    bottle.rotation.z = Math.sin(t * 1.9) * 0.07 * a;
+    bottle.rotation.x = Math.sin(t * 1.4 + 0.8) * 0.05 * a;
+    // The top mat creeps off the stack and back on.
+    topMat.position.x = -2.7 + (0.5 + 0.5 * Math.sin(t * 0.7)) * 0.22 * a;
+    topMat.position.y = F + 0.22 + Math.abs(Math.sin(t * 0.7)) * 0.01 * a;
   }];
 }
 
@@ -1149,23 +1288,14 @@ function buildMusic(b, g) {
     b.box(px, F, pz, 0.1, 0.05, 0.5, C.metalDark, syr);
   }
   b.box(syx, F + 0.72, syz, 1.72, 0.14, 0.54, 0x3f4348, syr);
-  for (let i = 0; i < 13; i++) {
-    const [kx, kz] = loc(syx, syz, syr, -0.72 + i * 0.12, 0.11);
-    const black = (i % 7 === 1 || i % 7 === 3 || i % 7 === 5);
-    b.box(kx, F + 0.86, kz, 0.1, 0.03, 0.26, black ? 0x2c2f33 : C.paper, syr);
-  }
+  // Keys are meshes so they can be played — see animMusic.
   for (let i = 0; i < 4; i++) {
     const [nx, nz] = loc(syx, syz, syr, -0.62 + i * 0.19, -0.16);
     b.cyl(nx, F + 0.86, nz, 0.04, 0.04, 0.05, 6, C.brass);
   }
 
-  // Record crate.
+  // Record crate. The sleeves inside it riffle — see animMusic.
   b.box(2.5, F, -1.9, 0.95, 0.7, 0.8, C.woodDark, -0.35);
-  const r = rng(21);
-  for (let i = 0; i < 9; i++) {
-    b.box(2.5 - 0.3 + i * 0.075, F + 0.16, -1.9 + (i - 4) * 0.028,
-          0.05, 0.62, 0.62, BOOKS[(r() * BOOKS.length) | 0], -0.35);
-  }
   b.cylC(1.4, F + 0.34, 1.9, 0.34, 0.34, 0.035, 12, C.vinyl, 0, 0, 0);  // one left out
   b.cylC(1.4, F + 0.36, 1.9, 0.1, 0.1, 0.02, 10, C.brass, 0, 0, 0);
   pottedPlant(b, -2.9, 2.4, 1.15);
@@ -1222,6 +1352,48 @@ function animMusic(group) {
     meterRoot.add(m);
     meters.push(m);
   }
+  // The sleeves in the record crate, leaning through as if someone is going
+  // back to front looking for something.
+  const sleeves = [];
+  const rr = rng(21);
+  for (let i = 0; i < 9; i++) {
+    const m = part(function (b) {
+      b.box(-0.025, 0, -0.31, 0.05, 0.62, 0.62, BOOKS[(rr() * BOOKS.length) | 0]);
+    });
+    const lx = -0.3 + i * 0.075, lz = (i - 4) * 0.028;
+    m.position.set(2.5 + Math.cos(-0.35) * lx + Math.sin(-0.35) * lz, F + 0.16,
+                   -1.9 - Math.sin(-0.35) * lx + Math.cos(-0.35) * lz);
+    m.rotation.y = -0.35;
+    group.add(m);
+    sleeves.push(m);
+  }
+
+  // Synth keys, played in a slow rolling figure rather than at random.
+  const keys = [], SYX = -2.4, SYZ = -1.85, SYR = 0.55;
+  for (let i = 0; i < 13; i++) {
+    const black = (i % 7 === 1 || i % 7 === 3 || i % 7 === 5);
+    const m = part(function (b) {
+      b.box(-0.05, 0, -0.13, 0.1, 0.03, 0.26, black ? 0x2c2f33 : C.paper);
+    });
+    const [kx, kz] = loc(SYX, SYZ, SYR, -0.72 + i * 0.12, 0.11);
+    m.position.set(kx, F + 0.86, kz);
+    m.rotation.y = SYR;
+    group.add(m);
+    keys.push(m);
+  }
+  ups.push(function (t, dt, amt, idle) {
+    const a = Math.max(amt, idle);
+    for (let i = 0; i < sleeves.length; i++) {
+      // A wave running through the crate, front to back.
+      const p = Math.sin(t * 1.1 - i * 0.55) * 0.5 + 0.5;
+      sleeves[i].rotation.x = -(0.06 + p * 0.3) * a;
+    }
+    for (let i = 0; i < keys.length; i++) {
+      const on = Math.max(0, Math.sin(t * 2.4 - i * 0.62));
+      keys[i].position.y = F + 0.86 - Math.pow(on, 6) * 0.022 * a;
+    }
+  });
+
   // Touching the mixer pushes everything into the red for a moment.
   let burst = 0;
   burstMeters = function () { burst = 1; touched(); };
@@ -1278,8 +1450,8 @@ function buildProjects(b, g) {
 
   shelf(b, -2.95, -0.6, 2.4, 1.55, Math.PI / 2, 55);
   crate(b, 2.85, F, -1.5, 0.7, 0.25);
-  crate(b, 2.75, F + 0.7, -1.45, 0.52, -0.15);
   crate(b, 2.9, F, -0.6, 0.5, 0.5);
+  // The crate on top of the stack rocks, so it is a mesh — see animProjects.
   pottedPlant(b, -2.6, 2.4, 1.15);
   void g;
 }
@@ -1354,6 +1526,8 @@ function makeToy(kind, i) {
   return solidMesh(b);
 }
 
+let openChest = null, spillProjects = null;
+
 function animProjects(group, def, zone) {
   const ups = [];
 
@@ -1414,20 +1588,41 @@ function animProjects(group, def, zone) {
     if (entry.href) d.act = function () { window.open(entry.href, "_blank", "noopener"); };
   }
 
+  // The chest stays shut until somebody opens it — selecting the island is not
+  // the same as reaching for the lid.
+  let open = 0, openTo = 0;
+  openChest = function () { openTo = openTo > 0.5 ? 0 : 1; touched(); };
+
+  // Books off the shelf on the back wall.
+  const spill = bookSpill(group, -2.95, -0.6, Math.PI / 2, 2.4, 1.55, 91);
+  spillProjects = spill.throwOut;
+
+  // The stack of crates: the top one rocks when the scene is awake.
+  const crateTop = part(function (b) { crate(b, 0, 0, 0, 0.52, 0); });
+  crateTop.position.set(2.75, F + 0.7, -1.45);
+  crateTop.rotation.y = -0.15;
+  group.add(crateTop);
+
   ups.push(function (t, dt, amt, idle) {
+    spill.update(dt);
+    const a = Math.max(amt, idle);
+    crateTop.rotation.z = Math.sin(t * 1.7) * 0.035 * a;
+    crateTop.position.y = F + 0.7 + Math.abs(Math.sin(t * 1.7)) * 0.012 * a;
+
+    open += (openTo - open) * (1 - Math.pow(0.005, dt));
     // A touch past the stop, then back — a lid thrown open, not eased open.
     // Idle only creaks it: whatever is inside stays a surprise until it is
     // actually opened.
-    pivot.rotation.x = -1.85 * amt - Math.sin(amt * Math.PI) * 0.16
-                     - idle * 0.1 * (1 - amt);
+    pivot.rotation.x = -1.85 * open - Math.sin(open * Math.PI) * 0.16
+                     - idle * 0.1 * (1 - open);
     for (const m of toys.children) {
       const home = m.userData.home;
       const wobble = Math.sin(t * 1.15 + m.userData.phase) * 0.09;
-      m.position.x += (home.x * amt - m.position.x) * Math.min(1, dt * 5);
-      m.position.z += ((home.z * amt) + (1 - amt) * -0.4 - m.position.z) * Math.min(1, dt * 5);
-      m.position.y += (((0.82 + home.y + wobble) * amt - 0.34 * (1 - amt)) - m.position.y) * Math.min(1, dt * 5);
-      m.rotation.y += dt * (0.12 + m.userData.spin * amt);
-      if (m.userData.detail) m.userData.detail.enabled = amt > 0.55;
+      m.position.x += (home.x * open - m.position.x) * Math.min(1, dt * 5);
+      m.position.z += ((home.z * open) + (1 - open) * -0.4 - m.position.z) * Math.min(1, dt * 5);
+      m.position.y += (((0.82 + home.y + wobble) * open - 0.34 * (1 - open)) - m.position.y) * Math.min(1, dt * 5);
+      m.rotation.y += dt * (0.12 + m.userData.spin * open);
+      if (m.userData.detail) m.userData.detail.enabled = open > 0.55;
       m.visible = m.position.y > -0.3;
     }
   });
@@ -1520,10 +1715,39 @@ function dogHead(b) {
 }
 
 let petDog = null, toggleLamp = null;
+let spillAboutL = null, spillAboutR = null;
 
 function animAbout(group, def, zone) {
   const ups = [];
   const topY = ABOUT_TOP;
+
+  // Both bookcases in the study drop books when they are touched.
+  const left = bookSpill(group, -2.95, -0.5, Math.PI / 2, 3.0, 2.0, 17);
+  const right = bookSpill(group, 2.95, -0.8, -Math.PI / 2, 2.2, 1.55, 41);
+  spillAboutL = left.throwOut;
+  spillAboutR = right.throwOut;
+
+  // The laptop is on: a cursor blinking away on an otherwise dead screen.
+  const cursor = part(function (b) {
+    b.boxC(0, 0, 0, 0.05, 0.022, 0.01, 0x9fd8ff);
+  }, true);
+  cursor.position.set(-0.58, topY + 0.36, 0.3);
+  cursor.rotation.x = -0.22;
+  group.add(cursor);
+  const rows = part(function (b) {
+    for (let i = 0; i < 4; i++) b.boxC(0, -i * 0.045, 0, 0.3 - i * 0.05, 0.014, 0.01, 0x4e6e86);
+  }, true);
+  rows.position.set(-0.46, topY + 0.3, 0.29);
+  rows.rotation.x = -0.22;
+  group.add(rows);
+
+  ups.push(function (t, dt, amt, idle) {
+    left.update(dt);
+    right.update(dt);
+    const a = Math.max(amt, idle);
+    cursor.visible = a > 0.05 && (t * 1.7) % 1 < 0.55;
+    rows.visible = a > 0.05;
+  });
 
   // The dog: breathing all the time, head up and tail going when you arrive.
   const dog = new THREE.Group();
@@ -1666,29 +1890,44 @@ function sandGeometry(fill) {
   return new THREE.CylinderGeometry(Math.max(0.09, rTop), HG_R - 0.04, 1, 14);
 }
 
-let spinHourglass = null;
+let turnHourglass = null;
+let turning = false;
 
-function animHourglass(parentGroup) {
+function animHourglass(group) {
   const ups = [];
 
-  // Everything from here down lives in `group`, which is what turns.
-  const group = new THREE.Group();
-  parentGroup.add(group);
-  group.add(part(hourglassFrame));
+  /* The vessel — woodwork, brass and glass — hangs off a pivot at the neck,
+     which is what an hourglass actually turns about. Everything above the neck
+     mirrors what is below it, so the glass looks identical after the turn and
+     only the frame gives it away: the fat plinth ends up on top.
 
-  let spinFrom = 0, spinTo = 0, spinT = 1;
-  spinHourglass = function () {
-    spinFrom = group.rotation.y;
-    spinTo = spinFrom + Math.PI * 2;    // one full, heavy turn
-    spinT = 0;
+     The sand is deliberately NOT in here. It stays the right way up in the
+     world and simply pours again, which is both what sand does and far less
+     work than mirroring every level, stream and grain. */
+  const vessel = new THREE.Group();
+  vessel.position.set(0, HG_NECK, 0);
+  group.add(vessel);
+  const frame = part(hourglassFrame);
+  frame.position.y = -HG_NECK;
+  vessel.add(frame);
+
+  let turnFrom = 0, turnTo = 0, turnT = 1;
+  turnHourglass = function () {
+    if (turnT < 1) return;                 // one turn at a time
+    turnFrom = vessel.rotation.z;
+    turnTo = turnFrom + Math.PI;
+    turnT = 0;
+    turning = true;
+    if (sandCol) sandCol.scale.y = 0.0001; // it all runs back to the neck
     touched();
   };
   ups.push(function (t, dt) {
-    if (spinT >= 1) return;
-    spinT = Math.min(1, spinT + dt * 0.42);
-    // Quick away, long settle — a heavy thing given a shove.
-    const e = 1 - Math.pow(1 - spinT, 3);
-    group.rotation.y = spinFrom + (spinTo - spinFrom) * e;
+    if (turnT >= 1) return;
+    turnT = Math.min(1, turnT + dt * 0.85);
+    // Slow to start, slow to stop: a heavy thing lifted and set back down.
+    const e = turnT < 0.5 ? 2 * turnT * turnT : 1 - Math.pow(-2 * turnT + 2, 2) / 2;
+    vessel.rotation.z = turnFrom + (turnTo - turnFrom) * e;
+    if (turnT >= 1) { turning = false; repour(); }
   });
 
   const glassMat = new THREE.MeshLambertMaterial({
@@ -1711,15 +1950,16 @@ function animHourglass(parentGroup) {
   topSand.position.set(0, HG_NECK + 0.26, 0);
   group.add(topSand);
 
-  // The glass, last so it draws over what is inside it.
+  // The glass, last so it draws over what is inside it. It turns with the
+  // vessel, and is its own mirror image, so it looks the same either way up.
   const lower = new THREE.Mesh(
     new THREE.CylinderGeometry(HG_WAIST, HG_R, HG_BULB, 14, 1, true), glassMat);
-  lower.position.set(0, HG_BASE + HG_BULB / 2, 0);
-  group.add(lower);
+  lower.position.set(0, HG_BASE + HG_BULB / 2 - HG_NECK, 0);
+  vessel.add(lower);
   const upper = new THREE.Mesh(
     new THREE.CylinderGeometry(HG_R, HG_WAIST, HG_BULB, 14, 1, true), glassMat);
-  upper.position.set(0, HG_NECK + HG_BULB / 2, 0);
-  group.add(upper);
+  upper.position.set(0, HG_BULB / 2, 0);
+  vessel.add(upper);
 
   // The stream, and grains falling down it so the motion reads at any size.
   const stream = new THREE.Mesh(
@@ -1757,6 +1997,15 @@ function animHourglass(parentGroup) {
   ups.push(function (t, dt, amt) {
     const top = HG_BASE + sandCol.scale.y;         // surface of the lower sand
     const drop = Math.max(0.05, HG_NECK - 0.06 - top);
+
+    // Nothing runs while it is up in the air, including the sand itself —
+    // a flat disc hanging where the glass used to be gives the trick away.
+    stream.visible = !turning;
+    mound.visible = !turning;
+    sandCol.visible = !turning;
+    topSand.visible = !turning;
+    for (const g2 of grains) g2.visible = !turning;
+    if (turning) return;
 
     stream.scale.y = drop;
     stream.position.set(0, top + drop / 2, 0);
@@ -2014,7 +2263,11 @@ ZONES.forEach(function (def, i) {
   }
 
   if (def.id === "projects") {
-    addDetail(zone, -2.95, F + 0.78, -0.6, 0.9, 1.6, 1.1, 0.95, 0.25);  // the shelf
+    swings(addDetail(zone, 0, F + 0.95, 0.3, 2.4, 1.4, 2.3, 1.75, 0.42,
+                     function () { if (openChest) openChest(); }, 1.3));
+    // Framed wide, because the point is watching where the books land.
+    swings(addDetail(zone, -2.6, F + 0.78, -0.6, 0.9, 1.6, 2.5, 2.0, 0.3,
+                     function () { if (spillProjects) spillProjects(); }));
     addDetail(zone, 2.85, F + 0.55, -1.1, 1.2, 1.3, 1.0, 0.85, 0.3);    // the crates
   }
 
@@ -2025,12 +2278,10 @@ ZONES.forEach(function (def, i) {
     swings(addDetail(zone, -0.96, ABOUT_TOP + 0.4, 0.28, 0.5, 0.72, 0.55, 0.5, 0.25,
                      function () { if (toggleLamp) toggleLamp(); }, 0.35));
     addDetail(zone, 0.6, ABOUT_TOP + 0.1, 0.38, 0.36, 0.36, 0.34, 0.26, 0.35, null, 0.3);
-    addDetail(zone, -2.95, F + 1.05, -0.5, 0.9, 2.0, 1.3, 1.1, 0.22);   // the shelves
-  }
-
-  if (def.id === "hourglass") {
-    swings(addDetail(zone, 0, HG_BASE + HG_BULB, 0, 1.9, 3.0, 1.9, 1.9, 0.3,
-                     function () { if (spinHourglass) spinHourglass(); }, 1.9));
+    swings(addDetail(zone, -2.6, F + 1.05, -0.5, 0.9, 2.0, 2.8, 2.2, 0.28,
+                     function () { if (spillAboutL) spillAboutL(); }));
+    swings(addDetail(zone, 2.6, F + 0.85, -0.8, 0.9, 1.6, 2.5, 2.0, 0.28,
+                     function () { if (spillAboutR) spillAboutR(); }));
   }
 
   // The laptop on the booth: one tap to read the screen, a second to leave.
@@ -2065,7 +2316,15 @@ ZONES.forEach(function (def, i) {
     });
   }
 });
-addZone(JAR_ZONE, 0, 0, 0, 4.8, 5.0);
+
+/* The hourglass is not in ZONES — it is the middle of the ring, not a part of
+   it — so its own target has to be hung on it here, outside that loop. */
+const jarZone = addZone(JAR_ZONE, 0, 0, 0, 4.8, 5.0);
+if (jarZone) {
+  // Framed wide enough that it stays in shot while it is on its side.
+  swings(addDetail(jarZone, 0, HG_NECK, 0, 1.9, 3.0, 2.5, 2.2, 0.3,
+                   function () { if (turnHourglass) turnHourglass(); }, 1.9));
+}
 
 // Placeholder copy has nowhere left to show itself, so it nags here instead of
 // quietly shipping as though it were finished.
@@ -2506,6 +2765,7 @@ function fillFor(count) {
 }
 
 let total = 0, fillTarget = 0, pourStart = 0, pouring = false;
+let pourCounts = true;
 let grainFall = false, grainT = 0;
 
 function startPour(count) {
@@ -2517,6 +2777,16 @@ function startPour(count) {
   }
   pourStart = performance.now();
   pouring = true;
+  pourCounts = true;
+}
+
+/** After the glass is turned over: the same sand runs again. The tally is not
+    re-counted and no new grain is dropped — nobody visited twice. */
+function repour() {
+  if (!sandCol) return;
+  pourStart = performance.now();
+  pouring = true;
+  pourCounts = false;
 }
 
 function setCounter(v) { counterEl.textContent = Math.round(v).toLocaleString(); }
@@ -2619,10 +2889,13 @@ function frame(now) {
     const p = (now - pourStart) / 1800;
     const e = p >= 1 ? 1 : 1 - Math.pow(1 - p, 3);
     const fillH = fillTarget * HG_BULB * e;
-    setCounter(total * e);
+    if (pourCounts) setCounter(total * e);
     sandCol.scale.y = Math.max(0.0001, fillH);
     sandCol.position.y = HG_BASE + fillH / 2;
-    if (p >= 1) { pouring = false; setCounter(total); dropGrain(); }
+    if (p >= 1) {
+      pouring = false;
+      if (pourCounts) { setCounter(total); dropGrain(); }
+    }
   }
 
   if (grainFall && grain) {
