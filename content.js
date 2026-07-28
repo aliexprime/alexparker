@@ -86,13 +86,15 @@ export const SCREEN = {
   lines: []
 };
 
-/* The lit panel across the front of the DJ booth. Tap it to read it, tap it
-   again and SoundCloud opens in a new tab. Keep the lines short — it is a
-   panel on the front of a table, not a page. */
+/* `booth` is lit across the front of the DJ booth — the name over the decks,
+   and nothing else, because that is all a booth front ever says.
+
+   `cue` is the word that comes up over the mixer when you look at it. Tap the
+   mixer once and it appears; tap it again and `href` opens in a new tab. Keep
+   it to a single short word — it is a light on a mixer, not a button. */
 export const MUSIC_LINK = {
-  title: "SOUNDCLOUD",
-  handle: "1RESPRAY",
-  foot: "TAP AGAIN TO OPEN",
+  booth: "RESPRAY",
+  cue: "LISTEN",
   href: "https://soundcloud.com/1respray"
 };
 
