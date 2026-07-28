@@ -73,11 +73,19 @@ const C = {
   deckBody:  0x4a4f55,
   platter:   0x9aa1a6,
   vinyl:     0x2b2926,
-  mixer:     0x3b4046,
+  /* Three greys a step apart, so the mixer reads as a made thing rather than a
+     black hole between two decks: the case a shade lighter than a deck, the
+     faceplate set into it darker, and the brow at the back darker again. */
+  mixer:     0x525860,
+  mixerFace: 0x3a4046,      // the faceplate the controls are set into
+  mixerDark: 0x272b30,      // the brow at the back, standing the meters up
+  knob:      0x9aa2a8,
+  slot:      0x1c1f23,      // a fader's sunk channel
   speaker:   0x3f4348,
   cone:      0x8d7f6d,
   ledCyan:   0x7fd6d0,
   ledAmber:  0xe8b95c,
+  ledRed:    0xd8694e,      // the top of a meter, where you do not want to be
 
   leather:   0xa8402c,
   leatherDark: 0x7d2c1e,
@@ -1356,11 +1364,21 @@ const PANEL_Y = F + 0.55, PANEL_Z = 0.14, PANEL_W = 1.32, PANEL_H = 0.46;
    Held here rather than written into each place that needs them, because the
    crate and the synth are each built in one function, animated in another and
    given a hit box in a third, and all three have to agree. */
+/* The mixer's control surface, and the brow at the back of it that carries the
+   two channel meters. MIX_BROW_Z is the face they sit on, pointing at you. */
+const MIX_TOP    = DECK_Y + 0.235;
+const MIX_BROW_H = 0.18;
+const MIX_BROW_Z = -0.585;
+
 const SPK_X = 2.6, SPK_Z = -2.25;
 const SYN_X = -2.4, SYN_Z = 1.9, SYN_R = 0.55;
 const CRATE_X = 2.5, CRATE_Z = 1.75, CRATE_R = -0.35;
 const CRATE_H = 0.46;                    // wall height; the sleeves stand proud
 const SLEEVE_Y = F + 0.08;               // resting on the crate floor
+/* Sized to the inside of the crate: 0.81 across and 0.66 front to back once the
+   walls are taken off, and 0.38 from the floor to the top of them. A record
+   stands a little proud of a crate, not most of the way out of it. */
+const SLEEVE_H = 0.52, SLEEVE_D = 0.52;
 
 function buildMusic(b, g) {
   island(b, ISLAND, 0xcfc7b6);
@@ -1379,10 +1397,42 @@ function buildMusic(b, g) {
     b.box(x + side * 0.3, DECK_Y + 0.21, -0.74, 0.08, 0.05, 0.08, C.metalDark);
     b.box(x - side * 0.31, DECK_Y + 0.21, -0.08, 0.05, 0.02, 0.22, 0xd6d6d0); // pitch
   }
+  /* The mixer, laid out the way a club mixer actually is: two channel strips
+     side by side, each with its EQ above its own fader, a crossfader across
+     the front, and the meters standing up on a brow at the back rather than
+     lying flat on the deck where nothing can read them. Everything is built
+     around MIX_TOP so the whole surface can be moved in one number. */
   b.box(0, DECK_Y + 0.1, -0.35, 0.72, 0.13, 0.66, C.mixer);
-  for (let i = 0; i < 3; i++) {
-    b.box(-0.2 + i * 0.2, DECK_Y + 0.23, -0.2, 0.06, 0.02, 0.26, 0xd6d6d0);  // faders
-    b.cyl(-0.2 + i * 0.2, DECK_Y + 0.23, -0.52, 0.045, 0.045, 0.04, 6, C.brass);
+  b.box(0, MIX_TOP - 0.01, -0.35, 0.68, 0.012, 0.62, C.mixerFace);   // faceplate
+
+  for (const side of [-1, 1]) {
+    const cx = side * 0.17;
+    /* EQ in a block of four rather than a line of four. Strung out front to
+       back they came at this camera as one long diagonal smear down the face;
+       clustered, each channel reads as a cluster. */
+    for (let i = 0; i < 4; i++) {
+      const kx = cx + ((i % 2) - 0.5) * 0.105;
+      const kz = -0.545 + Math.floor(i / 2) * 0.095;
+      b.cyl(kx, MIX_TOP, kz, 0.03, 0.032, 0.028, 8, i === 0 ? C.brass : C.knob);
+      b.cyl(kx, MIX_TOP + 0.028, kz, 0.011, 0.011, 0.008, 6, C.mixerFace);
+    }
+    // Channel fader: a sunk slot with a cap in it. The cap rides the level.
+    b.box(cx, MIX_TOP - 0.008, -0.185, 0.05, 0.012, 0.24, C.slot);
+  }
+
+  // Crossfader, across the front where a crossfader goes.
+  b.box(0, MIX_TOP - 0.008, -0.065, 0.42, 0.01, 0.05, C.slot);
+
+  /* The brow. A club mixer stands its meters up on the back panel so the DJ
+     can see them from above the decks — which is also the only place they can
+     be read from out here, since anything lying flat on the top face is edge
+     on to the camera and reduces to a line. */
+  b.box(0, MIX_TOP, MIX_BROW_Z - 0.04, 0.68, MIX_BROW_H, 0.08, C.mixerDark);
+  b.box(0, MIX_TOP + MIX_BROW_H, MIX_BROW_Z - 0.04, 0.7, 0.02, 0.1, C.mixer);
+  for (const side of [-1, 1]) {
+    // Which channel each ladder belongs to, printed beside it.
+    textMid(g, side < 0 ? "1" : "2", side * 0.29, MIX_TOP + 0.135,
+            MIX_BROW_Z + 0.005, 0.014, 0x8fa3ae);
   }
 
   /* The handle, lit into the front of the booth.
@@ -1398,13 +1448,10 @@ function buildMusic(b, g) {
      reads the way the front of a booth usually does. */
   b.box(0, PANEL_Y - PANEL_H / 2, PANEL_Z, PANEL_W + 0.08, PANEL_H + 0.08, 0.03, C.metalDark);
   g.box(0, PANEL_Y - PANEL_H / 2, PANEL_Z + 0.012, PANEL_W, PANEL_H, 0.02, 0x25333d);
-  /* The y given to a line of text is the TOP of it, not the middle, so each
-     line has to be placed below the whole depth of the one above: a glyph is
-     seven pixels tall, so a line set at px is 7 x px deep. */
-  textMid(g, MUSIC_LINK.title, 0, PANEL_Y + 0.17, PANEL_Z + 0.03, 0.013, C.ledAmber);
-  g.box(0, PANEL_Y + 0.055, PANEL_Z + 0.03, 0.82, 0.012, 0.02, 0x3d5766);
-  textMid(g, MUSIC_LINK.handle, 0, PANEL_Y + 0.02, PANEL_Z + 0.03, 0.019, C.ledCyan);
-  textMid(g, MUSIC_LINK.foot, 0, PANEL_Y - 0.15, PANEL_Z + 0.03, 0.0065, 0x6f8c9b);
+  /* One word, because that is what the front of a booth says. The y given to a
+     line of text is the TOP of it, not the middle, and a glyph is seven pixels
+     tall — so a line set at px hangs 7 x px below the number given here. */
+  textMid(g, MUSIC_LINK.booth, 0, PANEL_Y + 0.115, PANEL_Z + 0.03, 0.033, C.ledCyan);
 
   // Headphones resting on the corner.
   b.cylC(-1.15, DECK_Y + 0.12, 0.28, 0.16, 0.16, 0.05, 10, 0x33373b, Math.PI / 2, 0, 0);
@@ -1446,13 +1493,14 @@ function buildMusic(b, g) {
     b.box(ex, F, ez, cw, CRATE_H, ct, C.wood, CRATE_R);
   }
 
-  b.cylC(1.15, F + 0.34, 2.55, 0.34, 0.34, 0.035, 12, C.vinyl, 0, 0, 0);  // one left out
-  b.cylC(1.15, F + 0.36, 2.55, 0.1, 0.1, 0.02, 10, C.brass, 0, 0, 0);
   pottedPlant(b, -2.9, -1.4, 1.15);
 }
 
 let spinDecks = null, burstMeters = null;
 let thumpSpeakers = null, pullRecord = null, playKeys = null;
+// The mixer's own focus target, so the scene can tell when it is being read
+// and put its LISTEN cue up. Assigned where the targets are registered.
+let mixerTarget = null;
 
 function animMusic(group) {
   const ups = [];
@@ -1482,17 +1530,58 @@ function animMusic(group) {
     for (const p of platters) p.rotation.y += dt * (0.35 + 3.1 * a + spun * 3.4);
   });
 
-  // Mixer meters.
-  const meters = [];
-  const meterRoot = new THREE.Group();
-  meterRoot.position.set(0, DECK_Y + 0.24, -0.35);
-  group.add(meterRoot);
-  for (let i = 0; i < 6; i++) {
-    const m = part(b => b.box(0, 0, 0, 0.035, 1, 0.05, i > 3 ? C.ledAmber : C.ledCyan), true);
-    m.position.set(-0.13 + i * 0.052, 0, 0.22);
-    meterRoot.add(m);
-    meters.push(m);
+  /* Two channel meters, one ladder each, standing on the brow. Segments are
+     separate meshes that switch on and off rather than a bar that stretches,
+     because a ladder of discrete lamps is what a mixer actually shows and it
+     survives the pixel grid better than a smoothly growing rectangle. */
+  // Six lamps with a clear gap between them. At seven the gaps fell below a
+  // pixel and the ladder rendered as one solid bar, which is a different
+  // instrument entirely.
+  const SEGS = 6, SEG_PITCH = 0.025;
+  const ladders = [[], []];
+  for (let ch = 0; ch < 2; ch++) {
+    const cx = ch === 0 ? -0.19 : 0.19;
+    for (let i = 0; i < SEGS; i++) {
+      const col = i >= SEGS - 1 ? C.ledRed : (i >= SEGS - 3 ? C.ledAmber : C.ledCyan);
+      const m = part(b => b.box(0, 0, 0, 0.075, 0.013, 0.012, col), true);
+      m.position.set(cx, MIX_TOP + 0.032 + i * SEG_PITCH, MIX_BROW_Z + 0.004);
+      m.visible = false;
+      group.add(m);
+      ladders[ch].push(m);
+    }
+    // The unlit ladder behind, so the meter reads as a meter when it is quiet.
+    const back = part(b => b.box(0, 0, 0, 0.085, SEGS * SEG_PITCH, 0.008, 0x14171a));
+    back.position.set(cx, MIX_TOP + 0.032 + (SEGS - 1) * SEG_PITCH / 2, MIX_BROW_Z - 0.002);
+    group.add(back);
   }
+
+  // The two channel fader caps, which ride their own channel's level.
+  const caps = [];
+  for (const side of [-1, 1]) {
+    const cap = part(b => {
+      b.box(0, 0, 0, 0.07, 0.028, 0.05, C.knob);
+      b.box(0, 0.028, 0, 0.075, 0.008, 0.012, 0xd6d6d0);
+    });
+    cap.position.set(side * 0.17, MIX_TOP - 0.002, -0.185);
+    group.add(cap);
+    caps.push(cap);
+  }
+
+  /* LISTEN, over the mixer. Hidden until the mixer is the thing being looked
+     at, then it grows up out of the brow — the second tap is what opens
+     SoundCloud, and this is the only thing that says so. */
+  const cue = part(function (b) {
+    b.box(0, 0, 0, 0.52, 0.135, 0.02, C.mixerDark);
+    b.box(0, 0.004, 0.011, 0.5, 0.127, 0.01, 0x1b3038);
+  });
+  cue.position.set(0, MIX_TOP + MIX_BROW_H + 0.06, MIX_BROW_Z - 0.02);
+  group.add(cue);
+  const cueText = part(function (b) {
+    textMid(b, MUSIC_LINK.cue, 0, 0.105, 0.02, 0.013, C.ledCyan);
+  }, true);
+  cue.add(cueText);
+  cue.scale.set(1, 0.0001, 1);
+  cue.visible = false;
   /* The sleeves standing in the record crate. Square, filed front to back, all
      sitting flat on the crate floor — no stagger and no lean. A record does not
      tilt out of a crate, it comes straight up out of it, so that is the only
@@ -1500,8 +1589,12 @@ function animMusic(group) {
   const sleeves = [];
   const rr = rng(21);
   for (let i = 0; i < 9; i++) {
+    /* Square, and centred on its own origin. It used to be drawn from z 0 back
+       to -0.58 while its origin sat at the middle of the crate, so every record
+       hung a quarter of a unit out the back of it with the front half empty —
+       and at 0.58 tall on a 0.38 deep crate they stood more out than in. */
     const m = part(function (b) {
-      b.box(-0.025, 0, -0.29, 0.05, 0.58, 0.58, BOOKS[(rr() * BOOKS.length) | 0]);
+      b.box(0, 0, 0, 0.05, SLEEVE_H, SLEEVE_D, BOOKS[(rr() * BOOKS.length) | 0]);
     });
     const [px, pz] = loc(CRATE_X, CRATE_Z, CRATE_R, -0.28 + i * 0.07, 0);
     m.position.set(px, SLEEVE_Y, pz);
@@ -1561,13 +1654,26 @@ function animMusic(group) {
   let burst = 0;
   burstMeters = function () { burst = 1; touched(); };
   const pMeter = phaser();
+  let cueUp = 0;
   ups.push(function (t, dt, amt, idle) {
     burst = Math.max(0, burst - dt * 0.35);
     const a = Math.min(1, Math.max(amt, idle) + burst);
     const k = pMeter(dt, 3.4 + burst * 5);
-    for (let i = 0; i < meters.length; i++) {
-      meters[i].scale.y = 0.02 + (walk(k + i * 5.1) * 0.1 + burst * 0.07) * a;
+
+    // Two channels running their own levels, so the pair never move as one.
+    for (let ch = 0; ch < 2; ch++) {
+      const lvl = (walk(k + ch * 17.3) * 0.62 + 0.34 + burst * 0.3) * a;
+      const lit = Math.round(clamp(lvl, 0, 1) * SEGS);
+      for (let i = 0; i < SEGS; i++) ladders[ch][i].visible = i < lit;
+      // The fader sits where its channel is running.
+      caps[ch].position.z = -0.185 + (0.5 - clamp(lvl, 0, 1)) * 0.17;
     }
+
+    // The cue only exists while the mixer is the thing being read.
+    const want = (mixerTarget && activeDetail === mixerTarget) ? 1 : 0;
+    cueUp += (want - cueUp) * (1 - Math.pow(0.004, dt));
+    cue.visible = cueUp > 0.01;
+    cue.scale.y = Math.max(0.0001, cueUp);
   });
 
   // Speaker cones, pushing air.
@@ -1618,11 +1724,68 @@ function buildProjects(b, g) {
   }
 
   shelf(b, -2.95, -0.6, 2.4, 1.55, Math.PI / 2, 55);
-  crate(b, 2.85, F, -1.5, 0.7, 0.25);
-  crate(b, 2.9, F, -0.6, 0.5, 0.5);
-  // The crate on top of the stack rocks, so it is a mesh — see animProjects.
+
+  /* Alphabet blocks instead of the two packing crates that used to stand here.
+     A room built around a toy chest had a pair of anonymous brown boxes in the
+     corner, which is warehouse, not playroom — and being plain cubes they gave
+     the eye nothing, where a block has a letter on it and a colour of its own.
+     They spell the room, which is the other thing the boxes were not doing.
+
+     Two on the floor and one on top; the fourth is a mesh so it can be knocked
+     off the stack — see animProjects. */
+  for (const s of BLOCKS) {
+    b.box(s.x, F + s.y, s.z, BLOCK_S, BLOCK_S, BLOCK_S, s.col, s.ry);
+    blockLetter(b, s.x, F + s.y + BLOCK_S / 2, s.z, s.ry, s.ch);
+  }
   pottedPlant(b, -2.6, 2.4, 1.15);
   void g;
+}
+
+/* ---- Alphabet blocks --------------------------------------------------------
+
+   A stack in the corner of the playroom, spelling the room. Each block carries
+   its letter sunk into the face that points out of the ring, and a paler panel
+   behind it so the letter has something to sit on rather than floating on bare
+   wood. `ry` is small and different on each, because a child does not line
+   blocks up square and a stack that is perfectly square reads as furniture. */
+const BLOCK_S = 0.46;
+/* Three along the floor and one on top of the middle, rather than two stacks
+   of two — stacked in pairs, the back block of each pair is hidden behind the
+   front one and half the word is a colour you cannot read. */
+const BLOCKS = [
+  { ch: "P", x: 2.24, y: 0, z: -1.06, ry:  0.11, col: C.toyRed },
+  { ch: "L", x: 2.78, y: 0, z: -1.00, ry: -0.06, col: C.toyBlue },
+  { ch: "A", x: 3.32, y: 0, z: -1.06, ry:  0.14, col: C.toyYellow }
+];
+const BLOCK_TOP = { ch: "Y", x: 2.78, y: BLOCK_S, z: -1.00, ry: -0.19, col: C.toyGreen };
+
+/** The letter on the outward face of one block, plus the panel it sits on.
+    Takes the CENTRE of the block, so it serves both the ones built into the
+    island and the loose one, which is drawn around its own origin.
+
+    Drawn a pixel at a time rather than with textMid, because the text helpers
+    all draw square onto the x/y plane and a block is turned a little off it.
+    Each pixel is placed with the block's own rotation, so the letter lies on
+    the face instead of cutting across the corner of it. */
+function blockLetter(b, cx, cy, cz, ry, ch) {
+  const glyph = FONT[ch];
+  if (!glyph) return;
+  const half = BLOCK_S / 2;
+
+  const [panelX, panelZ] = loc(cx, cz, ry, 0, half - 0.004);
+  b.boxC(panelX, cy, panelZ, 0.3, 0.3, 0.02, C.paper, 0, ry, 0);
+
+  const px = 0.03;
+  const w = GLYPH_W * px, h = GLYPH_H * px;
+  for (let r = 0; r < GLYPH_H; r++) {
+    for (let c = 0; c < GLYPH_W; c++) {
+      if (glyph[r * GLYPH_W + c] !== "1") continue;
+      const lx = -w / 2 + (c + 0.5) * px;
+      const ly = h / 2 - (r + 0.5) * px;
+      const [gx, gz] = loc(cx, cz, ry, lx, half + 0.008);
+      b.boxC(gx, cy + ly, gz, px, px, 0.02, 0x3b3129, 0, ry, 0);
+    }
+  }
 }
 
 /** The objects that live in the chest. Add a case to add a shape. */
@@ -1637,8 +1800,14 @@ function makeToy(kind, i) {
       for (const f of [0.05, -0.05]) {
         b.cylC(0, 0, f, 0.25, 0.25, 0.02, 14, 0xe2c274, Math.PI / 2, 0, 0);
       }
+      // A T on this face and an H on the other, because it is a coin from a
+      // heads-or-tails game and half of that was missing.
       b.boxC(0, 0, 0.062, 0.07, 0.17, 0.02, 0xa8853c);
       b.boxC(0, 0.05, 0.062, 0.15, 0.06, 0.02, 0xa8853c);
+      for (const s of [-1, 1]) {
+        b.boxC(s * 0.05, 0, -0.062, 0.05, 0.17, 0.02, 0xa8853c);
+      }
+      b.boxC(0, 0, -0.062, 0.09, 0.05, 0.02, 0xa8853c);
       break;
 
     case "football": {
@@ -1766,10 +1935,13 @@ function animProjects(group, def, zone) {
   const spill = bookSpill(group, -2.95, -0.6, Math.PI / 2, 2.4, 1.55, 91);
   spillProjects = spill.throwOut;
 
-  // The stack of crates: the top one rocks when the scene is awake.
-  const crateTop = part(function (b) { crate(b, 0, 0, 0, 0.52, 0); });
-  crateTop.position.set(2.75, F + 0.7, -1.45);
-  crateTop.rotation.y = -0.15;
+  // The top block of the stack, which is the one that gets knocked off it.
+  const crateTop = part(function (b) {
+    b.box(0, 0, 0, BLOCK_S, BLOCK_S, BLOCK_S, BLOCK_TOP.col);
+    blockLetter(b, 0, BLOCK_S / 2, 0, 0, BLOCK_TOP.ch);
+  });
+  crateTop.position.set(BLOCK_TOP.x, F + BLOCK_TOP.y, BLOCK_TOP.z);
+  crateTop.rotation.y = BLOCK_TOP.ry;
   group.add(crateTop);
 
   let toppled = false, fall = 0;
@@ -1780,10 +1952,13 @@ function animProjects(group, def, zone) {
     const a = Math.max(amt, idle);
     fall += ((toppled ? 1 : 0) - fall) * (1 - Math.pow(0.01, dt));
     // Rocking on the stack, or tipped off the side of it onto the rug.
-    crateTop.rotation.z = Math.sin(t * 1.7) * 0.035 * a * (1 - fall) - fall * 0.5;
-    crateTop.position.x = 2.75 + fall * 0.66;
-    crateTop.position.y = F + 0.7 + Math.abs(Math.sin(t * 1.7)) * 0.012 * a
-                        - fall * 0.5;
+    // Rocking on the stack, or knocked off the side of it onto the rug.
+    crateTop.rotation.z = Math.sin(t * 1.7) * 0.04 * a * (1 - fall) - fall * 1.5;
+    crateTop.rotation.y = BLOCK_TOP.ry + fall * 0.5;
+    crateTop.position.x = BLOCK_TOP.x + fall * 0.5;
+    crateTop.position.z = BLOCK_TOP.z + fall * 0.34;
+    crateTop.position.y = F + BLOCK_TOP.y + Math.abs(Math.sin(t * 1.7)) * 0.012 * a
+                        - fall * BLOCK_S;
 
     open += (openTo - open) * (1 - Math.pow(0.005, dt));
     // A touch past the stop, then back — a lid thrown open, not eased open.
@@ -2086,8 +2261,30 @@ function sandGeometry(fill) {
   return new THREE.CylinderGeometry(Math.max(0.09, rTop), HG_R - 0.04, 1, 14);
 }
 
+/** The inside of the UPPER bulb, h above the neck: narrow at the neck, wide at
+    the top, straight between the two — which is how the glass is built. */
+function bulbR(h) {
+  return HG_WAIST + (HG_R - HG_WAIST) * clamp(h / HG_BULB, 0, 1);
+}
+
+/** And the sand sitting in it, held just inside the glass. `frac` is how much
+    of a load is still up there; the geometry is a unit height, to be scaled. */
+function topSandGeometry(frac) {
+  const h = HG_BULB * HG_LOAD * clamp(frac, 0, 1);
+  return new THREE.CylinderGeometry(Math.max(0.06, bulbR(h) - 0.025), HG_WAIST * 0.92, 1, 14);
+}
+
 let turnHourglass = null;
 let turning = false;
+
+/* How long one bulb takes to empty into the other, and how far through that it
+   is. The lower level used to stand for the visitor count; the count is in the
+   header where it can actually be read, and down here the sand does what sand
+   does — runs out, gets turned over, runs out again. */
+const HG_RUN = 60;
+const HG_LOAD = 0.94;      // how much of a bulb one load of sand fills
+let hgT = 0;
+let sandStep = -1;         // which fortieth of the run the tapers were cut for
 
 function animHourglass(group) {
   const ups = [];
@@ -2107,23 +2304,45 @@ function animHourglass(group) {
   frame.position.y = -HG_NECK;
   vessel.add(frame);
 
+  /* Turning it over is lift, then spin, then set down — three moves, not one.
+
+     It has to be. The vessel turns about its neck, and the far corner of the
+     plinth is 2.14 out from there while the neck is only 1.68 above the
+     ground, so halfway round that corner is a third of a unit UNDER the floor
+     it is standing on. Spinning on the spot puts the base through the island.
+     Lifting first is also simply what you do with an hourglass. */
+  const HG_LIFT = 0.62;
+  const RISE = 0.24, SPIN = 0.76;         // where in the run each move happens
   let turnFrom = 0, turnTo = 0, turnT = 1;
+
   turnHourglass = function () {
     if (turnT < 1) return;                 // one turn at a time
     turnFrom = vessel.rotation.z;
     turnTo = turnFrom + Math.PI;
     turnT = 0;
     turning = true;
-    if (sandCol) sandCol.scale.y = 0.0001; // it all runs back to the neck
     touched();
   };
+
+  const ease = p => (p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2);
   ups.push(function (t, dt) {
     if (turnT >= 1) return;
-    turnT = Math.min(1, turnT + dt * 0.85);
-    // Slow to start, slow to stop: a heavy thing lifted and set back down.
-    const e = turnT < 0.5 ? 2 * turnT * turnT : 1 - Math.pow(-2 * turnT + 2, 2) / 2;
-    vessel.rotation.z = turnFrom + (turnTo - turnFrom) * e;
-    if (turnT >= 1) { turning = false; repour(); }
+    turnT = Math.min(1, turnT + dt * 0.5);
+
+    // Up over the first quarter, hold while it turns, down over the last.
+    const up = turnT < RISE ? ease(turnT / RISE)
+             : turnT > SPIN ? 1 - ease((turnT - SPIN) / (1 - SPIN))
+             : 1;
+    vessel.position.y = HG_NECK + up * HG_LIFT;
+
+    const s = clamp((turnT - RISE) / (SPIN - RISE), 0, 1);
+    vessel.rotation.z = turnFrom + (turnTo - turnFrom) * ease(s);
+
+    if (turnT >= 1) {
+      turning = false;
+      vessel.position.y = HG_NECK;
+      hgT = 0;                             // the sand starts its run again
+    }
   });
 
   const glassMat = new THREE.MeshLambertMaterial({
@@ -2138,12 +2357,17 @@ function animHourglass(group) {
   sandCol.position.set(0, HG_BASE, 0);
   group.add(sandCol);
 
-  // Sand still up top, funnelling into the neck.
+  /* Sand still up top. Built as a unit cone and scaled, so its level can drop
+     over the run without rebuilding geometry every frame.
+
+     The old one was a fixed 0.44 across where the glass around it is only
+     0.379, so it stood out through the side of the bulb. Both radii now come
+     off the glass itself: the upper bulb runs from HG_WAIST at the neck to
+     HG_R at the top over HG_BULB, so the glass at height h is a straight
+     interpolation between them, and the sand is held a hair inside that. */
   const topSand = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.44, HG_WAIST + 0.02, 0.52, 14),
-    new THREE.MeshLambertMaterial({ color: C.sand })
+    topSandGeometry(1), new THREE.MeshLambertMaterial({ color: C.sand })
   );
-  topSand.position.set(0, HG_NECK + 0.26, 0);
   group.add(topSand);
 
   // The glass, last so it draws over what is inside it. It turns with the
@@ -2191,7 +2415,38 @@ function animHourglass(group) {
   group.add(grain);
 
   ups.push(function (t, dt, amt) {
-    const top = HG_BASE + sandCol.scale.y;         // surface of the lower sand
+    /* The run. One bulb empties into the other over HG_RUN seconds and then it
+       turns itself over and goes again, which is the only thing an hourglass
+       has ever done. Tapping it turns it early; either way hgT starts over. */
+    if (!turning) {
+      hgT = Math.min(1, hgT + dt / HG_RUN);
+      if (hgT >= 1) turnHourglass();
+    }
+
+    /* Both tapers follow the glass around them, and a cone's top radius cannot
+       be scaled without dragging its bottom one along, so the shape has to be
+       remade rather than stretched. Not sixty times a second though: once every
+       fortieth of the run is far below what anyone can see moving. */
+    const step = Math.round(hgT * 40);
+    if (step !== sandStep) {
+      sandStep = step;
+      sandCol.geometry.dispose();
+      sandCol.geometry = sandGeometry(hgT * HG_LOAD);
+      topSand.geometry.dispose();
+      topSand.geometry = topSandGeometry(1 - hgT);
+    }
+
+    // Top drains, bottom fills, and the two always add up to one load of sand.
+    const topH = HG_BULB * HG_LOAD * (1 - hgT);
+    topSand.visible = !turning && topH > 0.02;
+    topSand.scale.y = Math.max(0.001, topH);
+    topSand.position.set(0, HG_NECK + topH / 2, 0);
+
+    const botH = HG_BULB * HG_LOAD * hgT;
+    sandCol.scale.y = Math.max(0.0001, botH);
+    sandCol.position.y = HG_BASE + botH / 2;
+
+    const top = HG_BASE + botH;                    // surface of the lower sand
     const drop = Math.max(0.05, HG_NECK - 0.06 - top);
 
     // Nothing runs while it is up in the air, including the sand itself —
@@ -2377,10 +2632,33 @@ const detailHits = [];
 
 /** A hit box carried by a moving object, so it can be tapped where it is. */
 function addMovingDetail(zone, mesh) {
+  /* Wrapped round the object itself rather than a fixed cube.
+
+     Every one of these used to get the same 0.66 box whatever it was, which
+     for a coin — a disc a tenth of a unit thick — was seven times deeper than
+     the thing it stood for, and for a ball lying on its side was half again
+     too tall. A hit box is a solid: at this camera a ray comes down at about
+     thirty degrees, so a box standing well proud of its object is entered
+     long before the object is reached, and answers taps aimed past it.
+
+     Measured off the geometry so it cannot drift when a shape is redrawn,
+     with a little margin for comfort and a floor so nothing thin is
+     impossible to hit. */
+  mesh.geometry.computeBoundingBox();
+  const bb = mesh.geometry.boundingBox;
+  const size = new THREE.Vector3(), centre = new THREE.Vector3();
+  bb.getSize(size);
+  bb.getCenter(centre);
+
   const hit = new THREE.Mesh(
-    new THREE.BoxGeometry(0.66, 0.66, 0.66),
+    new THREE.BoxGeometry(
+      Math.max(0.2, size.x + 0.07),
+      Math.max(0.2, size.y + 0.07),
+      Math.max(0.2, size.z + 0.07)
+    ),
     new THREE.MeshBasicMaterial({ visible: false })
   );
+  hit.position.copy(centre);
   mesh.add(hit);
   const detail = {
     zone: zone,
@@ -2547,14 +2825,18 @@ ZONES.forEach(function (def, i) {
   if (def.id === "music") {
     swings(addDetail(zone, -0.85, DECK_Y + 0.2, -0.35, 0.85, 0.4, 0.9, 0.6, 0.5,
                      function () { if (spinDecks) spinDecks(); }, 0.7));
-    /* On the mixer's top face, where its knobs are, rather than in the middle
-       of its body. A laptop used to stand open in front of it, so a tap aimed
-       at the body travelled down through the laptop to get there and the
-       laptop quite rightly answered instead. The laptop has since moved to the
-       booth's front panel, but the top face is still the right target: it is
-       the part you can see. */
-    swings(addDetail(zone, 0, DECK_Y + 0.24, -0.52, 0.8, 0.16, 0.7, 0.5, 0.55,
-                     function () { if (burstMeters) burstMeters(); }, 0.28));
+    /* The mixer is the way out to SoundCloud now, so it is deliberately NOT a
+       swings() target: act must not fire on the first touch. One tap brings the
+       camera onto it and puts LISTEN up over the brow, and only the second tap
+       opens the link — nobody should be sent off the site by a tap that was
+       aimed at looking at something.
+
+       The box covers the brow and the top face together, which is all of the
+       mixer you can see from out front. */
+    mixerTarget = addDetail(zone, 0, MIX_TOP + 0.1, -0.44, 0.8, 0.4, 0.72, 0.52, 0.4,
+                            function () { window.open(MUSIC_LINK.href, "_blank", "noopener"); },
+                            0.34);
+    mixerTarget.onFocus = function () { if (burstMeters) burstMeters(); };
     for (const side of [-1, 1]) {
       swings(addDetail(zone, side * SPK_X, F + 1.5, SPK_Z, 0.9, 1.15, 0.9, 0.8, 0.25,
                        function () { if (thumpSpeakers) thumpSpeakers(); }));
@@ -2571,8 +2853,10 @@ ZONES.forEach(function (def, i) {
     // Framed wide, because the point is watching where the books land.
     swings(addDetail(zone, -2.6, F + 0.78, -0.6, 0.9, 1.6, 2.5, 2.0, 0.3,
                      function () { if (spillProjects) spillProjects(); }));
-    swings(addDetail(zone, 2.85, F + 0.55, -1.1, 1.2, 1.3, 1.9, 1.5, 0.3,
-                     function () { if (toppleCrate) toppleCrate(); }));   // the crates
+    // The block stack. Wrapped round all four of them, so a tap anywhere on
+    // the pile knocks the top one off it.
+    swings(addDetail(zone, 2.78, F + 0.5, -1.0, 2.0, 1.1, 1.9, 1.4, 0.3,
+                     function () { if (toppleCrate) toppleCrate(); }, 0.9));
   }
 
   if (def.id === "about") {
@@ -2590,14 +2874,10 @@ ZONES.forEach(function (def, i) {
                      function () { if (spillAboutR) spillAboutR(); }));
   }
 
-  // The panel on the front of the booth: one tap to read it, a second to go.
-  if (def.id === "music") {
-    // Sized to the plate, and thin, because it lies flat against the booth
-    // front and there is a whole deck table behind it to keep clear of.
-    addDetail(zone, 0, PANEL_Y, PANEL_Z, PANEL_W, PANEL_H, 0.85, 0.6, 0.22,
-              function () { window.open(MUSIC_LINK.href, "_blank", "noopener"); },
-              0.1);
-  }
+  /* The booth front is a name and nothing else now — no target of its own. The
+     way out to SoundCloud moved onto the mixer, which is the thing you would
+     reach for anyway, and a panel that only says who it is has nothing to do
+     when you tap it. */
 
   // The chart on the end of the bed. Tap it to read it; once it fills the
   // screen its four lines become tap targets of their own, and each one opens
@@ -2951,6 +3231,9 @@ function focusDetail(d) {
   // should do it the moment you touch them, not on a second tap. Tapping again
   // runs it again, through the branch above.
   if (d.actOnFocus && d.act) d.act();
+  // And a target whose act is a way off the site gets to stir on arrival
+  // without that stirring being the thing a second tap repeats.
+  if (d.onFocus) d.onFocus();
 
   document.body.classList.add("focused");
   refreshGates();
@@ -3147,35 +3430,18 @@ function fetchCount() {
     });
 }
 
-// A jar that filled linearly would be full forever after a few thousand visits,
-// so the level is logarithmic: always rising, never quite full.
-function fillFor(count) {
-  return clamp(0.09 + Math.log10(count + 1) / 5.4, 0.09, 0.94);
-}
-
-let total = 0, fillTarget = 0, pourStart = 0, pouring = false;
-let pourCounts = true;
+/* The level in the glass used to stand for the visitor count. It does not any
+   more — it runs out over a minute and turns itself over, because that is what
+   an hourglass does, and a level that is really a logarithm of a tally is a
+   chart pretending to be an object. The count is in the header, where it can
+   be read, and this visit still gets its own grain dropped down the neck. */
+let total = 0, pourStart = 0, pouring = false;
 let grainFall = false, grainT = 0;
 
 function startPour(count) {
   total = count;
-  fillTarget = fillFor(count);
-  if (sandCol) {
-    sandCol.geometry.dispose();
-    sandCol.geometry = sandGeometry(fillTarget);
-  }
   pourStart = performance.now();
   pouring = true;
-  pourCounts = true;
-}
-
-/** After the glass is turned over: the same sand runs again. The tally is not
-    re-counted and no new grain is dropped — nobody visited twice. */
-function repour() {
-  if (!sandCol) return;
-  pourStart = performance.now();
-  pouring = true;
-  pourCounts = false;
 }
 
 function setCounter(v) { counterEl.textContent = Math.round(v).toLocaleString(); }
@@ -3377,17 +3643,13 @@ function frame(now) {
   }
 
   // The pour: the jar fills while the tally climbs, then one last grain drops.
-  if (pouring && sandCol) {
+  // The tally climbing to the real number, and then this visit's own grain.
+  // The sand level is the hourglass's own business now — see animHourglass.
+  if (pouring) {
     const p = (now - pourStart) / 1800;
     const e = p >= 1 ? 1 : 1 - Math.pow(1 - p, 3);
-    const fillH = fillTarget * HG_BULB * e;
-    if (pourCounts) setCounter(total * e);
-    sandCol.scale.y = Math.max(0.0001, fillH);
-    sandCol.position.y = HG_BASE + fillH / 2;
-    if (p >= 1) {
-      pouring = false;
-      if (pourCounts) { setCounter(total); dropGrain(); }
-    }
+    setCounter(total * e);
+    if (p >= 1) { pouring = false; setCounter(total); dropGrain(); }
   }
 
   if (grainFall && grain) {
