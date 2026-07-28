@@ -40,7 +40,7 @@ export const ZONES = [
   {
     id: "music",
     label: "Music",
-    todo: "The laptop links out to SoundCloud. Individual track or set names could still go on the record sleeves if you want them named."
+    todo: "The panel on the front of the booth links out to SoundCloud. Individual track or set names could still go on the record sleeves if you want them named."
   },
 
   {
@@ -86,8 +86,9 @@ export const SCREEN = {
   lines: []
 };
 
-/* The laptop open on the DJ booth. Tap it to read the screen, tap it again and
-   SoundCloud opens in a new tab. Keep the lines short — the screen is small. */
+/* The lit panel across the front of the DJ booth. Tap it to read it, tap it
+   again and SoundCloud opens in a new tab. Keep the lines short — it is a
+   panel on the front of a table, not a page. */
 export const MUSIC_LINK = {
   title: "SOUNDCLOUD",
   handle: "1RESPRAY",

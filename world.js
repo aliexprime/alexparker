@@ -1340,10 +1340,12 @@ function animBJJ(group) {
 
 const DECK_Y = F + 0.92;
 
-/* The laptop lid on the booth: a focus target, and the way out to SoundCloud.
-   The lid leans back, so anything written on it has to lean back with it — the
-   screen text is a separate mesh in animMusic rather than part of the island. */
-const LAP_X = 0.05, LAP_Y = DECK_Y + 0.32, LAP_Z = -0.03, LAP_TILT = -0.24;
+/* The panel on the front of the booth: a focus target, and the way out to
+   SoundCloud. Flat against the front face, so unlike the laptop it replaced it
+   needs no group of its own to lean the lettering with a lid — it is simply
+   part of the island. PANEL_Y is the middle of it, and the booth front is at
+   z = 0.125, so the plate sits a hair proud of that. */
+const PANEL_Y = F + 0.55, PANEL_Z = 0.14, PANEL_W = 1.32, PANEL_H = 0.46;
 
 /* Local +z is out of the ring, so it is the front of the scene. The speakers
    are the tallest things here and were standing at +0.5, right in front of the
@@ -1383,10 +1385,26 @@ function buildMusic(b, g) {
     b.cyl(-0.2 + i * 0.2, DECK_Y + 0.23, -0.52, 0.045, 0.045, 0.04, 6, C.brass);
   }
 
-  // Laptop at the back of the booth.
-  b.box(LAP_X, DECK_Y + 0.1, 0.12, 0.6, 0.03, 0.4, C.metal);
-  b.boxC(LAP_X, LAP_Y, -0.06, 0.6, 0.4, 0.03, C.metal, LAP_TILT, 0, 0);
-  g.boxC(LAP_X, LAP_Y, LAP_Z, 0.53, 0.33, 0.012, 0x25333d, LAP_TILT, 0, 0);
+  /* The handle, lit into the front of the booth.
+
+     It used to be a laptop standing open on the deck table, and it stood in
+     the mixer: the mixer runs from z -0.68 to -0.02 and the screen was at
+     -0.06, inside it. There is no room to separate them up there either. The
+     top is 1.05 deep, the decks and mixer take 0.66 of that, and a laptop's
+     screen sits at the back of its own base — so pushing the screen forward
+     pushes the base off the front edge, which it already overhung.
+
+     On the front panel it cannot clash with anything on the table, and it
+     reads the way the front of a booth usually does. */
+  b.box(0, PANEL_Y - PANEL_H / 2, PANEL_Z, PANEL_W + 0.08, PANEL_H + 0.08, 0.03, C.metalDark);
+  g.box(0, PANEL_Y - PANEL_H / 2, PANEL_Z + 0.012, PANEL_W, PANEL_H, 0.02, 0x25333d);
+  /* The y given to a line of text is the TOP of it, not the middle, so each
+     line has to be placed below the whole depth of the one above: a glyph is
+     seven pixels tall, so a line set at px is 7 x px deep. */
+  textMid(g, MUSIC_LINK.title, 0, PANEL_Y + 0.17, PANEL_Z + 0.03, 0.013, C.ledAmber);
+  g.box(0, PANEL_Y + 0.055, PANEL_Z + 0.03, 0.82, 0.012, 0.02, 0x3d5766);
+  textMid(g, MUSIC_LINK.handle, 0, PANEL_Y + 0.02, PANEL_Z + 0.03, 0.019, C.ledCyan);
+  textMid(g, MUSIC_LINK.foot, 0, PANEL_Y - 0.15, PANEL_Z + 0.03, 0.0065, 0x6f8c9b);
 
   // Headphones resting on the corner.
   b.cylC(-1.15, DECK_Y + 0.12, 0.28, 0.16, 0.16, 0.05, 10, 0x33373b, Math.PI / 2, 0, 0);
@@ -1440,18 +1458,8 @@ function animMusic(group) {
   const ups = [];
   const platters = [];
 
-  // What is on the laptop screen. Its own group so it can lean back with the
-  // lid; local +z is then straight out of the screen.
-  const lap = new THREE.Group();
-  lap.position.set(LAP_X, LAP_Y, LAP_Z);
-  lap.rotation.x = LAP_TILT;
-  group.add(lap);
-  const lb = new Builder();
-  textMid(lb, MUSIC_LINK.title, 0, 0.12, 0.012, 0.008, C.ledAmber);
-  lb.box(0, 0.05, 0.012, 0.44, 0.008, 0.02, 0x3d5766);
-  textMid(lb, MUSIC_LINK.handle, 0, 0.025, 0.012, 0.0095, C.ledCyan);
-  textMid(lb, MUSIC_LINK.foot, 0, -0.085, 0.012, 0.005, 0x6f8c9b);
-  lap.add(solidMesh(lb));
+  // The panel is flat on the booth front and never moves, so it is built with
+  // the rest of the island rather than needing a group here.
 
   for (const side of [-1, 1]) {
     const x = side * 0.85;
@@ -2539,11 +2547,12 @@ ZONES.forEach(function (def, i) {
   if (def.id === "music") {
     swings(addDetail(zone, -0.85, DECK_Y + 0.2, -0.35, 0.85, 0.4, 0.9, 0.6, 0.5,
                      function () { if (spinDecks) spinDecks(); }, 0.7));
-    /* On the mixer's top face, where its knobs are, not in the middle of its
-       body. The laptop screen stands directly in front of the mixer and rises
-       past it, so a tap aimed at the body had to travel down through the
-       laptop to get there and the laptop quite rightly answered instead. Only
-       the knobs are visible from the front, so only the knobs are the target. */
+    /* On the mixer's top face, where its knobs are, rather than in the middle
+       of its body. A laptop used to stand open in front of it, so a tap aimed
+       at the body travelled down through the laptop to get there and the
+       laptop quite rightly answered instead. The laptop has since moved to the
+       booth's front panel, but the top face is still the right target: it is
+       the part you can see. */
     swings(addDetail(zone, 0, DECK_Y + 0.24, -0.52, 0.8, 0.16, 0.7, 0.5, 0.55,
                      function () { if (burstMeters) burstMeters(); }, 0.28));
     for (const side of [-1, 1]) {
@@ -2581,13 +2590,13 @@ ZONES.forEach(function (def, i) {
                      function () { if (spillAboutR) spillAboutR(); }));
   }
 
-  // The laptop on the booth: one tap to read the screen, a second to leave.
+  // The panel on the front of the booth: one tap to read it, a second to go.
   if (def.id === "music") {
-    // Sized to the screen itself. It used to stand taller than the lid does,
-    // and the overhang reached back over the mixer behind it.
-    addDetail(zone, LAP_X, LAP_Y, LAP_Z, 0.6, 0.34, 0.4, 0.3, 0.3,
+    // Sized to the plate, and thin, because it lies flat against the booth
+    // front and there is a whole deck table behind it to keep clear of.
+    addDetail(zone, 0, PANEL_Y, PANEL_Z, PANEL_W, PANEL_H, 0.85, 0.6, 0.22,
               function () { window.open(MUSIC_LINK.href, "_blank", "noopener"); },
-              0.12);
+              0.1);
   }
 
   // The chart on the end of the bed. Tap it to read it; once it fills the
