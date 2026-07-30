@@ -96,6 +96,15 @@ const C = {
   ledAmber:  0xe8b95c,
   ledRed:    0xd8694e,      // the top of a meter, where you do not want to be
 
+  // The two streaming icons on the mixer. Everything else in this palette is
+  // muted to sit inside the world's own light, and these two are the one
+  // deliberate exception — a badge is only worth building if it is recognised
+  // at a glance, and that means the real brand colours, not a version of them
+  // softened to match the room.
+  soundcloud:     0xff5500,
+  spotifyGreen:   0x1db954,
+  spotifyMark:    0x0d1f14,  // the bars, near-black the way the real mark sits on the green
+
   leather:   0xa8402c,
   leatherDark: 0x7d2c1e,
   perfume:   0xd7b0c0,
@@ -385,6 +394,37 @@ function wrapText(str, max) {
 /** The same as textXY, centred on `cx` rather than run from a left margin. */
 function textMid(b, str, cx, yTop, z, px, color) {
   return textXY(b, str, cx - textWidth(str, px) / 2, yTop, z, px, color);
+}
+
+/** Stand a pixel sprite up in the XY plane, centred on the origin and facing
+    +z like everything else here. `rows` is the picture written out top down,
+    one character per pixel, and `key` says what colour each character means —
+    anything not in `key` is a hole.
+
+    One box per horizontal RUN rather than one per pixel. What makes a sprite
+    read as pixel art is its stepped outline, and inside a run of the same
+    colour the cube faces are coplanar and identically lit, so a row of little
+    cubes and one long box are the same picture — the run costs a fortieth of
+    the geometry for it. Each box is a single pixel tall, well under AO_MIN, so
+    none of them pick up a contact skirt and the colours stay flat. */
+function sprite(b, rows, key, px, depth) {
+  const w = rows.reduce(function (m, r) { return Math.max(m, r.length); }, 0);
+  const x0 = -w * px / 2, yTop = rows.length * px / 2;
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r];
+    let c = 0;
+    while (c < row.length) {
+      const ch = row[c];
+      if (!(ch in key)) { c++; continue; }
+      let end = c;
+      while (end + 1 < row.length && row[end + 1] === ch) end++;
+      const n = end - c + 1;
+      b.boxC(x0 + (c + n / 2) * px, yTop - (r + 0.5) * px, 0,
+             n * px, px, depth, key[ch]);
+      c = end + 1;
+    }
+  }
+  return b;
 }
 
 /* ---- Cards ------------------------------------------------------------------
@@ -1457,6 +1497,26 @@ const PANEL_Y = F + 0.55, PANEL_Z = 0.14, PANEL_W = 1.32, PANEL_H = 0.46;
 const MIX_TOP    = DECK_Y + 0.235;
 const MIX_BROW_H = 0.18;
 const MIX_BROW_Z = -0.585;
+/* Where the LISTEN / icon panel sits, and both the mesh (in animMusic) and the
+   hit boxes over it (registered separately, where all this section's targets
+   are) need the same number — raised clear of the mixer's own hit box, which
+   tops out at MIX_TOP + 0.3 (addDetail below: height 0.4, centred 0.1 above
+   MIX_TOP), so a tap meant for an icon can never land in the mixer's box
+   instead once both exist over the same spot. */
+const MIX_CUE_Y = MIX_TOP + 0.36;
+/* The panel is built with its BOTTOM on the cue origin, so that scaling it in y
+   makes it grow up out of the mixer rather than open from the middle — which is
+   why its own middle needs a name of its own for everything that has to sit
+   centred in it. Wide and tall enough for the two badges side by side with a
+   margin either side; see MIX_ICON_X for where that leaves them. */
+const MIX_CUE_W = 0.56, MIX_CUE_H = 0.155;
+const MIX_CUE_MID = MIX_CUE_H / 2;
+/* The two badges are different widths — the cloud is nearly twice as wide as it
+   is tall, the disc is square — so centring the PAIR is not the same as putting
+   one either side of the middle. These are the two centres that leave an equal
+   margin at each end of the panel and an even gap between them, and the hit
+   boxes below are placed off the same numbers. */
+const MIX_ICON_X = [-0.083, 0.127];
 
 const SPK_X = 2.6, SPK_Z = -2.25;
 const SYN_X = -2.4, SYN_Z = 1.9, SYN_R = 0.55;
@@ -1467,6 +1527,93 @@ const SLEEVE_Y = F + 0.08;               // resting on the crate floor
    walls are taken off, and 0.38 from the floor to the top of them. A record
    stands a little proud of a crate, not most of the way out of it. */
 const SLEEVE_H = 0.52, SLEEVE_D = 0.52;
+
+/* ---- The two streaming badges -------------------------------------------------
+
+   Standing emblems rather than flat decals, in keeping with everything else
+   here being an actual shape rather than a picture of one — a badge with real
+   depth to it catches the same light as the mixer it sits on instead of looking
+   pasted over the top of it.
+
+   Both are pixel sprites, extruded. Curves were the first thing tried — lobes
+   of icosahedron for the cloud, thin partial tori for Spotify's bars — and at
+   the size these are actually seen they came out as an orange smear and an
+   unreadable dark smudge. A stepped outline holds its shape however small it
+   gets, which is the whole reason pixel art exists, and it is what the rest of
+   the world is built out of anyway.
+
+   Both return a mesh around their own origin, uncoloured by anything outside
+   them — makeToy does the same for the same reason: something this small is
+   assembled once and then just placed, not rebuilt every time it moves. */
+
+/* A pixel each, and how far both stand off their backing. The two differ
+   because the sprites are different shapes — the cloud is a wide, short 28x11,
+   the disc a square 19x19 — and a badge is judged by how much of the panel it
+   fills, not by how many pixels went into it. These are the sizes that leave
+   the pair looking like a matched set. */
+const SC_PX  = 0.0073;       // -> 0.204 wide, 0.080 tall
+const SP_PX  = 0.0061;       // -> 0.116 square
+const ICON_D = 0.024;
+
+/** SoundCloud: the waveform stepping up on the left into the cloud on the
+    right. The bars matter as much as the cloud — a plain cloud reads as
+    weather, and it is the bars ramping into it that say SoundCloud. So they
+    run tall, most of the way up to the cloud's own height, which is how the
+    real mark is drawn. No wordmark: nothing that small survives being read
+    across a room. */
+const SC_ROWS = [
+  "..............########......",
+  ".............###########....",
+  ".........##.#############...",
+  ".........##.##############..",
+  "...##....##.##############..",
+  "...##....##.###############.",
+  "...##.##.##.###############.",
+  "##.##.##.##.###############.",
+  "##.##.##.##.################",
+  "##.##.##.##.################",
+  "##.##.##.##.################"
+];
+
+function makeSoundcloudIcon() {
+  const b = new Builder();
+  sprite(b, SC_ROWS, { "#": C.soundcloud }, SC_PX, ICON_D);
+  return solidMesh(b);
+}
+
+/** Spotify: the disc, and the three arcs across it. They are concentric about
+    a point below the disc — the smallest at the bottom, each one wider than
+    the last, like a signal fanning upward — so their radii and spans are not
+    independent numbers to be nudged one at a time. Drawn straight into the
+    grid rather than cut out of it, so the green either side of a bar is the
+    same disc and the bars are holes in nothing. */
+const SP_ROWS = [
+  "......#######......",
+  "....###########....",
+  "...#############...",
+  "..###############..",
+  ".#####ooooooo#####.",
+  ".###ooooooooooo###.",
+  "###ooo#######ooo###",
+  "###o###########o###",
+  "#######ooooo#######",
+  "#####ooooooooo#####",
+  "#####oo#####oo#####",
+  "###################",
+  "#######ooooo#######",
+  ".#####ooooooo#####.",
+  ".#####o#####o#####.",
+  "..###############..",
+  "...#############...",
+  "....###########....",
+  "......#######......"
+];
+
+function makeSpotifyIcon() {
+  const b = new Builder();
+  sprite(b, SP_ROWS, { "#": C.spotifyGreen, "o": C.spotifyMark }, SP_PX, ICON_D);
+  return solidMesh(b);
+}
 
 function buildMusic(b, g) {
   island(b, ISLAND, 0xcfc7b6);
@@ -1655,6 +1802,12 @@ let thumpSpeakers = null, pullRecord = null, playKeys = null;
 // The mixer's own focus target, so the scene can tell when it is being read
 // and put its LISTEN cue up. Assigned where the targets are registered.
 let mixerTarget = null;
+// True once LISTEN has been tapped through to the two icons. Owned by
+// animMusic's own updater; declared here only so the click handler that sets
+// it (mixerTarget's act, registered further down) and the two icons' own hit
+// boxes (also registered further down) can all reach the same flag.
+let optionsOpen = false;
+let scTarget = null, spTarget = null;
 
 function animMusic(group) {
   const ups = [];
@@ -1721,19 +1874,33 @@ function animMusic(group) {
     caps.push(cap);
   }
 
-  /* LISTEN, over the mixer. Hidden until the mixer is the thing being looked
-     at, then it grows up out of the brow — the second tap is what opens
-     SoundCloud, and this is the only thing that says so. */
+  /* Over the mixer: LISTEN first, then — once you tap again — the two ways to
+     actually hear it. One panel, two things it can be showing, which is why
+     the icons are children of the same group that carries LISTEN rather than
+     a second pop-up of their own: they share its one rise. See MIX_CUE_Y for
+     why the panel sits where it does. */
   const cue = part(function (b) {
-    b.box(0, 0, 0, 0.52, 0.135, 0.02, C.mixerDark);
-    b.box(0, 0.004, 0.011, 0.5, 0.127, 0.01, 0x1b3038);
+    b.box(0, 0, 0, MIX_CUE_W, MIX_CUE_H, 0.02, C.mixerDark);
+    b.box(0, 0.005, 0.011, MIX_CUE_W - 0.02, MIX_CUE_H - 0.01, 0.01, 0x1b3038);
   });
-  cue.position.set(0, MIX_TOP + MIX_BROW_H + 0.06, MIX_BROW_Z - 0.02);
+  cue.position.set(0, MIX_CUE_Y, MIX_BROW_Z - 0.04);
   group.add(cue);
+
   const cueText = part(function (b) {
-    textMid(b, MUSIC_LINK.cue, 0, 0.105, 0.02, 0.013, C.ledCyan);
+    textMid(b, MUSIC_LINK.cue, 0, MIX_CUE_MID + 0.04, 0.02, 0.0115, C.ledCyan);
   }, true);
   cue.add(cueText);
+
+  // The two badges, sitting in that same panel once it has been asked twice.
+  const scIcon = makeSoundcloudIcon();
+  scIcon.position.set(MIX_ICON_X[0], MIX_CUE_MID, 0.018);
+  scIcon.visible = false;
+  cue.add(scIcon);
+  const spIcon = makeSpotifyIcon();
+  spIcon.position.set(MIX_ICON_X[1], MIX_CUE_MID, 0.018);
+  spIcon.visible = false;
+  cue.add(spIcon);
+
   cue.scale.set(1, 0.0001, 1);
   cue.visible = false;
   /* The sleeves standing in the record crate. Square, filed front to back, all
@@ -1820,6 +1987,17 @@ function animMusic(group) {
   burstMeters = function () { burst = 1; touched(); };
   const pMeter = phaser();
   let cueUp = 0;
+
+  /* Whether the panel is showing LISTEN or the two icons. Set true by the
+     mixer's own act(), defined where the target is registered below — a tap
+     that lands anywhere in the mixer's box while it is already the thing
+     focused reaches that act(), which is the moment to move past LISTEN.
+
+     Reset the instant the mixer stops being read, not left to whatever state
+     it was last in — arriving mid-pick, with LISTEN already swapped out for
+     icons you have not asked for yet, would be a strange way to meet it. */
+  optionsOpen = false;
+
   ups.push(function (t, dt, amt, idle) {
     burst = Math.max(0, burst - dt * 0.35);
     const a = Math.min(1, Math.max(amt, idle) + burst);
@@ -1836,9 +2014,18 @@ function animMusic(group) {
 
     // The cue only exists while the mixer is the thing being read.
     const want = (mixerTarget && activeDetail === mixerTarget) ? 1 : 0;
+    if (!want) optionsOpen = false;
     cueUp += (want - cueUp) * (1 - Math.pow(0.004, dt));
     cue.visible = cueUp > 0.01;
     cue.scale.y = Math.max(0.0001, cueUp);
+
+    cueText.visible = !optionsOpen;
+    scIcon.visible = optionsOpen;
+    spIcon.visible = optionsOpen;
+    // Each icon's own hit box exists only in the same moment it is drawn —
+    // see where they are registered below.
+    if (scTarget) scTarget.enabled = optionsOpen;
+    if (spTarget) spTarget.enabled = optionsOpen;
   });
 
   // Speaker cones, pushing air.
@@ -2999,18 +3186,44 @@ ZONES.forEach(function (def, i) {
   if (def.id === "music") {
     swings(addDetail(zone, -0.85, DECK_Y + 0.2, -0.35, 0.85, 0.4, 0.9, 0.6, 0.5,
                      function () { if (spinDecks) spinDecks(); }, 0.7));
-    /* The mixer is the way out to SoundCloud now, so it is deliberately NOT a
-       swings() target: act must not fire on the first touch. One tap brings the
-       camera onto it and puts LISTEN up over the brow, and only the second tap
-       opens the link — nobody should be sent off the site by a tap that was
-       aimed at looking at something.
+    /* The mixer is the way out to SoundCloud and Spotify now, so it is
+       deliberately NOT a swings() target: act must not fire on the first
+       touch. One tap brings the camera onto it and puts LISTEN up over the
+       brow; the second tap does not leave the site on its own any more, it
+       swaps LISTEN for the two icons — nobody should be sent off the site by
+       a tap that was aimed at looking at something, and now nobody is sent to
+       one destination when they may have wanted the other.
 
        The box covers the brow and the top face together, which is all of the
        mixer you can see from out front. */
     mixerTarget = addDetail(zone, 0, MIX_TOP + 0.1, -0.44, 0.8, 0.4, 0.72, 0.52, 0.4,
-                            function () { window.open(MUSIC_LINK.href, "_blank", "noopener"); },
+                            function () { optionsOpen = true; touched(); },
                             0.34);
     mixerTarget.onFocus = function () { if (burstMeters) burstMeters(); };
+
+    /* The two icons themselves. Instant, like the clipboard rows: by the time
+       either exists to be tapped the camera is already sitting on the mixer,
+       so tapping one should open its link on the spot, not spend a moment
+       flying somewhere it already is.
+
+       Built off the same MIX_ICON_X and MIX_CUE_MID the meshes are placed with
+       in animMusic, plus the panel's own offset, so the two cannot drift apart
+       — a hit box that does not agree with what is drawn under it is a tap that
+       misses something you can plainly see. Each box is only as wide as its own
+       badge, which is why they are not the same width. */
+    const scHref = (MUSIC_LINK.links.find(function (l) { return l.id === "soundcloud"; }) || {}).href;
+    const spHref = (MUSIC_LINK.links.find(function (l) { return l.id === "spotify"; }) || {}).href;
+    const ICON_Y = MIX_CUE_Y + MIX_CUE_MID, ICON_Z = MIX_BROW_Z - 0.022;
+    scTarget = addDetail(zone, MIX_ICON_X[0], ICON_Y, ICON_Z, 0.21, 0.13, 0.72, 0.52, 0.4,
+                         function () { if (scHref) window.open(scHref, "_blank", "noopener"); },
+                         0.12);
+    scTarget.instant = true;
+    scTarget.enabled = false;
+    spTarget = addDetail(zone, MIX_ICON_X[1], ICON_Y, ICON_Z, 0.15, 0.13, 0.72, 0.52, 0.4,
+                         function () { if (spHref) window.open(spHref, "_blank", "noopener"); },
+                         0.12);
+    spTarget.instant = true;
+    spTarget.enabled = false;
     for (const side of [-1, 1]) {
       swings(addDetail(zone, side * SPK_X, F + 1.5, SPK_Z, 0.9, 1.15, 0.9, 0.8, 0.25,
                        function () { if (thumpSpeakers) thumpSpeakers(); }));
@@ -3712,7 +3925,20 @@ const lessMotion = window.matchMedia
 
 function frame(now) {
   requestAnimationFrame(frame);
-  const dt = Math.min(0.05, (now - last) / 1000);
+  /* The clamp exists for one reason: a tab backgrounded for a while and then
+     resumed must not replay the missed time in a single lurch — an island
+     should not visibly leap across the ring because the frame rate stalled.
+
+     It does not exist to assume a frame rate. It was 0.05 (a 20fps floor),
+     which is fine for a cheap scene that always runs well above that — but
+     this one no longer always does, and every dt-driven motion in the world
+     shares this one number: below the floor, all of it quietly plays in slow
+     motion, in exact proportion to how far short of 20fps the frame lands.
+     That is not a guard against a pathological jump, it is a tax on ordinary
+     slow frames. 0.1 still catches the real pathological case — a multi-
+     second gap is clamped hard either way — while giving a phone room to
+     dip into single digits without the picture visibly dragging. */
+  const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   const t = now / 1000;
 

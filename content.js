@@ -40,7 +40,7 @@ export const ZONES = [
   {
     id: "music",
     label: "Music",
-    todo: "The panel on the front of the booth links out to SoundCloud. Individual track or set names could still go on the record sleeves if you want them named."
+    todo: "The mixer is the way out to SoundCloud and Spotify. Individual track or set names could still go on the record sleeves if you want them named."
   },
 
   {
@@ -90,12 +90,18 @@ export const SCREEN = {
    and nothing else, because that is all a booth front ever says.
 
    `cue` is the word that comes up over the mixer when you look at it. Tap the
-   mixer once and it appears; tap it again and `href` opens in a new tab. Keep
-   it to a single short word — it is a light on a mixer, not a button. */
+   mixer once and it appears; tap it again and it turns into the two icons in
+   `links`, each of which opens its own `href` in a new tab. Keep `cue` to a
+   single short word — it is a light on a mixer, not a button — and keep
+   `links` at two: the icon is built by hand for each id in world.js, so a
+   third id needs a matching shape added there before it does anything. */
 export const MUSIC_LINK = {
   booth: "RESPRAY",
   cue: "LISTEN",
-  href: "https://soundcloud.com/1respray"
+  links: [
+    { id: "soundcloud", href: "https://soundcloud.com/1respray" },
+    { id: "spotify", href: "https://open.spotify.com/track/5PgfeOzraZI73RTaK6Rpwc" }
+  ]
 };
 
 /* What is in the toy chest, in order — one object per project. The chest stays
