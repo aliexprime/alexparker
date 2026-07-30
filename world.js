@@ -37,7 +37,11 @@ const C = {
   paper:     0xfbfaf7,
   plant:     0x5f8a52,
   plantDark: 0x466b3d,
+  plantStem: 0x4d7342,
   pot:       0xb9714f,
+  potRim:    0xc98262,      // the rim standing proud of the pot
+  potDark:   0x8f523a,      // and the saucer under it
+  soil:      0x4a3a2c,
   fabric:    0xc3b096,
 
   rld:       0x2f9e7a,
@@ -66,6 +70,7 @@ const C = {
   matTrim:   0x6f8592,
   bagLeather:0x8a5a45,
   bagDark:   0x6f4636,
+  bagSeam:   0x5a3729,      // straps and stitching on the bag and the dummy
   beltWhite: 0xe8e5dc,
   beltBlack: 0x2f2c2a,
   gi:        0xe4e2da,
@@ -82,10 +87,23 @@ const C = {
   knob:      0x9aa2a8,
   slot:      0x1c1f23,      // a fader's sunk channel
   speaker:   0x3f4348,
+  speakerFace: 0x33373b,    // the baffle the drivers are set into
   cone:      0x8d7f6d,
+  canShell:  0x33373b,      // headphone cup
+  canPad:    0x55595e,      // and the pad inside it
+  canTrim:   0x1d2023,
   ledCyan:   0x7fd6d0,
   ledAmber:  0xe8b95c,
   ledRed:    0xd8694e,      // the top of a meter, where you do not want to be
+
+  // The two streaming icons on the mixer. Everything else in this palette is
+  // muted to sit inside the world's own light, and these two are the one
+  // deliberate exception — a badge is only worth building if it is recognised
+  // at a glance, and that means the real brand colours, not a version of them
+  // softened to match the room.
+  soundcloud:     0xff5500,
+  spotifyGreen:   0x1db954,
+  spotifyMark:    0x0d1f14,  // the bars, near-black the way the real mark sits on the green
 
   leather:   0xa8402c,
   leatherDark: 0x7d2c1e,
@@ -378,6 +396,37 @@ function textMid(b, str, cx, yTop, z, px, color) {
   return textXY(b, str, cx - textWidth(str, px) / 2, yTop, z, px, color);
 }
 
+/** Stand a pixel sprite up in the XY plane, centred on the origin and facing
+    +z like everything else here. `rows` is the picture written out top down,
+    one character per pixel, and `key` says what colour each character means —
+    anything not in `key` is a hole.
+
+    One box per horizontal RUN rather than one per pixel. What makes a sprite
+    read as pixel art is its stepped outline, and inside a run of the same
+    colour the cube faces are coplanar and identically lit, so a row of little
+    cubes and one long box are the same picture — the run costs a fortieth of
+    the geometry for it. Each box is a single pixel tall, well under AO_MIN, so
+    none of them pick up a contact skirt and the colours stay flat. */
+function sprite(b, rows, key, px, depth) {
+  const w = rows.reduce(function (m, r) { return Math.max(m, r.length); }, 0);
+  const x0 = -w * px / 2, yTop = rows.length * px / 2;
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r];
+    let c = 0;
+    while (c < row.length) {
+      const ch = row[c];
+      if (!(ch in key)) { c++; continue; }
+      let end = c;
+      while (end + 1 < row.length && row[end + 1] === ch) end++;
+      const n = end - c + 1;
+      b.boxC(x0 + (c + n / 2) * px, yTop - (r + 0.5) * px, 0,
+             n * px, px, depth, key[ch]);
+      c = end + 1;
+    }
+  }
+  return b;
+}
+
 /* ---- Cards ------------------------------------------------------------------
 
    A small printed plate with a heading, a rule and a few short lines, drawn
@@ -575,14 +624,53 @@ function bookSpill(group, x, z, ry, w, h, seed) {
   return { throwOut: throwOut, update: update };
 }
 
-function pottedPlant(b, x, z, scale) {
+/* There is one of these in nearly every room, which is why it is worth more
+   than the three blobs on a spike it used to be. A blob is what an
+   icosahedron looks like when nothing tells you it is a plant.
+
+   What makes it read now is that the parts are the parts a plant has: a pot
+   that tapers with a rim standing off it and a saucer under it, soil you can
+   see, a stem going up out of the soil, and leaves arranged in tiers around
+   that stem, each tier wider and lower than the one above. `seed` turns the
+   tiers so that no two plants in the world are the same plant. */
+function pottedPlant(b, x, z, scale, seed) {
   const s = scale || 1;
-  b.cyl(x, F, z, 0.19 * s, 0.15 * s, 0.26 * s, 8, C.pot);
-  b.cyl(x, F + 0.26 * s, z, 0.2 * s, 0.2 * s, 0.04 * s, 8, 0xa56243);
-  b.box(x, F + 0.28 * s, z, 0.05 * s, 0.28 * s, 0.05 * s, C.plantDark);
-  b.rock(x, F + 0.62 * s, z, 0.26 * s, C.plant);
-  b.rock(x + 0.18 * s, F + 0.48 * s, z - 0.1 * s, 0.17 * s, C.plantDark);
-  b.rock(x - 0.15 * s, F + 0.52 * s, z + 0.12 * s, 0.15 * s, C.plant);
+  const r = rng(seed === undefined ? 7 : seed);
+
+  // Saucer, pot, rim. The rim is a separate ring standing proud of the pot,
+  // which is the single detail that stops it reading as a paper cup.
+  b.cyl(x, F, z, 0.21 * s, 0.19 * s, 0.025 * s, 10, C.potDark);
+  b.cyl(x, F + 0.025 * s, z, 0.185 * s, 0.135 * s, 0.235 * s, 10, C.pot);
+  b.cyl(x, F + 0.235 * s, z, 0.2 * s, 0.195 * s, 0.045 * s, 10, C.potRim);
+  b.cyl(x, F + 0.24 * s, z, 0.17 * s, 0.17 * s, 0.02 * s, 10, C.soil);
+
+  // Stem, slightly off vertical, because nothing grows plumb.
+  const lean = (r() - 0.5) * 0.16;
+  b.boxC(x + lean * 0.2 * s, F + 0.42 * s, z, 0.045 * s, 0.34 * s, 0.045 * s,
+         C.plantStem, 0, 0, lean);
+
+  /* Leaves in three tiers. Each leaf is a flattened blob tipped away from the
+     stem, so a tier reads as a spray rather than a ball, and the tiers step
+     outward going down the way foliage does. */
+  const tiers = [
+    { y: 0.78, out: 0.10, n: 3, size: 0.115, col: C.plant },
+    { y: 0.63, out: 0.19, n: 4, size: 0.145, col: C.plantDark },
+    { y: 0.50, out: 0.26, n: 5, size: 0.13,  col: C.plant }
+  ];
+  let turn = r() * Math.PI * 2;
+  for (const t of tiers) {
+    for (let i = 0; i < t.n; i++) {
+      const a = turn + (i / t.n) * Math.PI * 2;
+      const lx = Math.cos(a) * t.out * s, lz = Math.sin(a) * t.out * s;
+      const jy = (r() - 0.5) * 0.04 * s;
+      b.rockS(x + lx, F + t.y * s + jy, z + lz, t.size * s, t.col, 0,
+              1.25, 0.5, 1.25, 0, -a, 0.34);
+    }
+    turn += 0.7;                      // offset each tier off the one above it
+  }
+  // A bud at the very top, so the stem has somewhere to end.
+  b.rockS(x + lean * 0.35 * s, F + 0.86 * s, z, 0.085 * s, C.plant, 0,
+          1, 1.15, 1, 0, 0, 0);
 }
 
 function crate(b, x, y, z, s, ry) {
@@ -714,7 +802,7 @@ function buildRLDatix(b, g) {
   b.cyl(-2.2, F, 1.5, 0.24, 0.2, 0.42, 8, C.metal);
   b.cyl(-2.2, F + 0.42, 1.5, 0.26, 0.26, 0.07, 8, C.blanket);
   b.cyl(2.5, F, -2.6, 0.2, 0.17, 0.42, 8, 0xd5dcdc);
-  pottedPlant(b, -2.9, 2.3, 1.0);
+  pottedPlant(b, -2.9, 2.3, 1.0, 3);
 }
 
 /** A trace that is mostly flat, with the one spike that matters. */
@@ -966,7 +1054,7 @@ function buildInvesting(b, g) {
     b.box(2.68, coinY + i * 0.1 + 0.02, 1.5, 0.42, 0.05, 0.1, 0xd8cfae, 0.2);
   }
 
-  pottedPlant(b, -1.0, 2.5, 1.1);
+  pottedPlant(b, -1.0, 2.5, 1.1, 11);
 }
 
 /** One side of the board, drawn around the panel's own centre so the same code
@@ -1191,7 +1279,7 @@ function buildBJJ(b, g) {
   for (let i = 0; i < 2; i++) {
     b.box(-2.7, F + i * 0.11, 2.6, 1.15, 0.11, 0.8, i % 2 ? C.matA : C.matB, 0.2);
   }
-  pottedPlant(b, 2.8, 2.6, 1.0);
+  pottedPlant(b, 2.8, 2.6, 1.0, 19);
   void g;
 }
 
@@ -1204,11 +1292,28 @@ function animBJJ(group) {
   const pivot = new THREE.Group();
   pivot.position.set(BAG_X + 0.78, F + 2.3, BAG_Z);
   group.add(pivot);
+  /* Heavy bag. The chain and swivel it hangs on, a collar top and bottom, a
+     body that tapers slightly toward the floor the way a filled bag does, and
+     two straps down the sides with the seam between them. A plain cylinder
+     with a band at each end could have been a water heater. */
   pivot.add(part(b => {
-    b.cyl(0, -0.16, 0, 0.05, 0.05, 0.16, 6, C.metalDark);
-    b.cyl(0, -1.5, 0, 0.27, 0.24, 1.34, 10, C.bagLeather);
-    b.cyl(0, -1.5, 0, 0.29, 0.29, 0.1, 10, C.bagDark);
-    b.cyl(0, -0.34, 0, 0.28, 0.28, 0.12, 10, C.bagDark);
+    b.cyl(0, -0.06, 0, 0.045, 0.045, 0.06, 6, C.metalDark);        // swivel
+    for (let i = 0; i < 3; i++) {                                  // chain
+      b.cylC(0, -0.11 - i * 0.055, 0, 0.032, 0.032, 0.05, 6, C.metal,
+             i % 2 ? Math.PI / 2 : 0, 0, 0);
+    }
+    b.cyl(0, -0.34, 0, 0.26, 0.29, 0.1, 10, C.bagDark);            // top collar
+    b.cyl(0, -1.5, 0, 0.265, 0.235, 1.18, 10, C.bagLeather);       // body
+    b.cyl(0, -1.56, 0, 0.245, 0.245, 0.1, 10, C.bagDark);          // base collar
+    /* Bands round it rather than straps down it. The body tapers from 0.265 at
+       the top to 0.235 at the floor, and a straight box cannot follow that: set
+       at one radius it stood out as a fin near the top and vanished inside the
+       leather near the bottom. A ring only needs the radius at its own height,
+       which is r = 0.235 + 0.0254 * (y + 1.5) along this cone. */
+    for (const y of [-1.12, -0.72]) {
+      const r = 0.235 + 0.0254 * (y + 1.5) + 0.006;
+      b.cyl(0, y - 0.03, 0, r, r, 0.06, 10, C.bagSeam);
+    }
   }));
 
   // A struck bag swings hard and then settles, so the hit decays rather than
@@ -1270,13 +1375,36 @@ function animBJJ(group) {
   group.add(dummy);
   const roll = new THREE.Group();
   dummy.add(roll);
+  /* A grappling dummy, laid out the way one is actually built: a torso that
+     tapers to the waist, shoulders wider than the chest, a neck, a head, arms
+     bent at the elbow rather than run straight out as sticks, and the seam and
+     stitching down the front. It used to be four slabs in a cross, which from
+     above read as a brown plus sign on the mat and nothing more.
+
+     -z is its head end. */
   roll.add(part(function (b) {
-    b.box(0, -0.17, 0, 0.5, 0.34, 1.1, C.bagLeather);            // torso
-    b.rock(0, 0, -0.72, 0.22, C.bagDark);                        // head
-    for (const side of [-1, 1]) {
-      b.boxC(side * 0.42, -0.02, -0.3, 0.2, 0.2, 0.72, C.bagLeather);
+    b.box(0, -0.19, -0.34, 0.56, 0.38, 0.5, C.bagLeather);        // chest
+    b.box(0, -0.17, 0.14, 0.46, 0.34, 0.42, C.bagLeather);        // waist
+    b.box(0, -0.16, 0.5, 0.5, 0.32, 0.34, C.bagLeather);          // hips
+    b.box(0, -0.02, -0.62, 0.22, 0.16, 0.16, C.bagDark);          // neck
+    b.rockS(0, 0.02, -0.8, 0.21, C.bagDark, 0, 0.95, 1, 1.1, 0, 0, 0);
+    /* The seam down the middle, and a row of stitches either side of it. On the
+       torso's top face at 0.19, not at 0 — at 0 they were inside the torso,
+       which is a lot of geometry to draw where nobody can see it. */
+    b.box(0, 0.188, -0.2, 0.05, 0.02, 1.24, C.bagSeam);
+    for (let i = 0; i < 7; i++) {
+      for (const sx of [-0.1, 0.1]) {
+        b.box(sx, 0.186, -0.68 + i * 0.17, 0.035, 0.018, 0.06, C.bagSeam);
+      }
     }
-    b.boxC(0, -0.02, 0.86, 0.42, 0.22, 0.6, C.bagDark);          // legs
+    for (const side of [-1, 1]) {
+      // Upper arm out to the side, forearm turned forward at the elbow.
+      b.boxC(side * 0.4, -0.04, -0.42, 0.28, 0.2, 0.2, C.bagLeather);
+      b.boxC(side * 0.52, -0.05, -0.16, 0.19, 0.19, 0.44, C.bagLeather, 0, side * 0.18, 0);
+      b.rockS(side * 0.57, -0.06, 0.08, 0.11, C.bagDark, 0, 1, 0.9, 1, 0, 0, 0);
+      // And a leg stub each, rather than one slab across the bottom.
+      b.boxC(side * 0.14, -0.06, 0.78, 0.21, 0.24, 0.32, C.bagDark);
+    }
   }));
 
   let rollFrom = 0, rollTo = 0, rollT = 1;
@@ -1369,6 +1497,26 @@ const PANEL_Y = F + 0.55, PANEL_Z = 0.14, PANEL_W = 1.32, PANEL_H = 0.46;
 const MIX_TOP    = DECK_Y + 0.235;
 const MIX_BROW_H = 0.18;
 const MIX_BROW_Z = -0.585;
+/* Where the LISTEN / icon panel sits, and both the mesh (in animMusic) and the
+   hit boxes over it (registered separately, where all this section's targets
+   are) need the same number — raised clear of the mixer's own hit box, which
+   tops out at MIX_TOP + 0.3 (addDetail below: height 0.4, centred 0.1 above
+   MIX_TOP), so a tap meant for an icon can never land in the mixer's box
+   instead once both exist over the same spot. */
+const MIX_CUE_Y = MIX_TOP + 0.36;
+/* The panel is built with its BOTTOM on the cue origin, so that scaling it in y
+   makes it grow up out of the mixer rather than open from the middle — which is
+   why its own middle needs a name of its own for everything that has to sit
+   centred in it. Wide and tall enough for the two badges side by side with a
+   margin either side; see MIX_ICON_X for where that leaves them. */
+const MIX_CUE_W = 0.56, MIX_CUE_H = 0.155;
+const MIX_CUE_MID = MIX_CUE_H / 2;
+/* The two badges are different widths — the cloud is nearly twice as wide as it
+   is tall, the disc is square — so centring the PAIR is not the same as putting
+   one either side of the middle. These are the two centres that leave an equal
+   margin at each end of the panel and an even gap between them, and the hit
+   boxes below are placed off the same numbers. */
+const MIX_ICON_X = [-0.083, 0.127];
 
 const SPK_X = 2.6, SPK_Z = -2.25;
 const SYN_X = -2.4, SYN_Z = 1.9, SYN_R = 0.55;
@@ -1379,6 +1527,93 @@ const SLEEVE_Y = F + 0.08;               // resting on the crate floor
    walls are taken off, and 0.38 from the floor to the top of them. A record
    stands a little proud of a crate, not most of the way out of it. */
 const SLEEVE_H = 0.52, SLEEVE_D = 0.52;
+
+/* ---- The two streaming badges -------------------------------------------------
+
+   Standing emblems rather than flat decals, in keeping with everything else
+   here being an actual shape rather than a picture of one — a badge with real
+   depth to it catches the same light as the mixer it sits on instead of looking
+   pasted over the top of it.
+
+   Both are pixel sprites, extruded. Curves were the first thing tried — lobes
+   of icosahedron for the cloud, thin partial tori for Spotify's bars — and at
+   the size these are actually seen they came out as an orange smear and an
+   unreadable dark smudge. A stepped outline holds its shape however small it
+   gets, which is the whole reason pixel art exists, and it is what the rest of
+   the world is built out of anyway.
+
+   Both return a mesh around their own origin, uncoloured by anything outside
+   them — makeToy does the same for the same reason: something this small is
+   assembled once and then just placed, not rebuilt every time it moves. */
+
+/* A pixel each, and how far both stand off their backing. The two differ
+   because the sprites are different shapes — the cloud is a wide, short 28x11,
+   the disc a square 19x19 — and a badge is judged by how much of the panel it
+   fills, not by how many pixels went into it. These are the sizes that leave
+   the pair looking like a matched set. */
+const SC_PX  = 0.0073;       // -> 0.204 wide, 0.080 tall
+const SP_PX  = 0.0061;       // -> 0.116 square
+const ICON_D = 0.024;
+
+/** SoundCloud: the waveform stepping up on the left into the cloud on the
+    right. The bars matter as much as the cloud — a plain cloud reads as
+    weather, and it is the bars ramping into it that say SoundCloud. So they
+    run tall, most of the way up to the cloud's own height, which is how the
+    real mark is drawn. No wordmark: nothing that small survives being read
+    across a room. */
+const SC_ROWS = [
+  "..............########......",
+  ".............###########....",
+  ".........##.#############...",
+  ".........##.##############..",
+  "...##....##.##############..",
+  "...##....##.###############.",
+  "...##.##.##.###############.",
+  "##.##.##.##.###############.",
+  "##.##.##.##.################",
+  "##.##.##.##.################",
+  "##.##.##.##.################"
+];
+
+function makeSoundcloudIcon() {
+  const b = new Builder();
+  sprite(b, SC_ROWS, { "#": C.soundcloud }, SC_PX, ICON_D);
+  return solidMesh(b);
+}
+
+/** Spotify: the disc, and the three arcs across it. They are concentric about
+    a point below the disc — the smallest at the bottom, each one wider than
+    the last, like a signal fanning upward — so their radii and spans are not
+    independent numbers to be nudged one at a time. Drawn straight into the
+    grid rather than cut out of it, so the green either side of a bar is the
+    same disc and the bars are holes in nothing. */
+const SP_ROWS = [
+  "......#######......",
+  "....###########....",
+  "...#############...",
+  "..###############..",
+  ".#####ooooooo#####.",
+  ".###ooooooooooo###.",
+  "###ooo#######ooo###",
+  "###o###########o###",
+  "#######ooooo#######",
+  "#####ooooooooo#####",
+  "#####oo#####oo#####",
+  "###################",
+  "#######ooooo#######",
+  ".#####ooooooo#####.",
+  ".#####o#####o#####.",
+  "..###############..",
+  "...#############...",
+  "....###########....",
+  "......#######......"
+];
+
+function makeSpotifyIcon() {
+  const b = new Builder();
+  sprite(b, SP_ROWS, { "#": C.spotifyGreen, "o": C.spotifyMark }, SP_PX, ICON_D);
+  return solidMesh(b);
+}
 
 function buildMusic(b, g) {
   island(b, ISLAND, 0xcfc7b6);
@@ -1453,31 +1688,97 @@ function buildMusic(b, g) {
      tall — so a line set at px hangs 7 x px below the number given here. */
   textMid(g, MUSIC_LINK.booth, 0, PANEL_Y + 0.115, PANEL_Z + 0.03, 0.033, C.ledCyan);
 
-  // Headphones resting on the corner.
-  b.cylC(-1.15, DECK_Y + 0.12, 0.28, 0.16, 0.16, 0.05, 10, 0x33373b, Math.PI / 2, 0, 0);
-  b.cylC(-0.82, DECK_Y + 0.12, 0.28, 0.16, 0.16, 0.05, 10, 0x33373b, Math.PI / 2, 0, 0);
-  b.box(-0.99, DECK_Y + 0.24, 0.28, 0.36, 0.05, 0.06, 0x44484c);
+  /* Headphones hooked over the lip of the booth, headband on the deck and cups
+     hanging down the front of it.
 
-  // Speakers on stands, at the back where they frame the booth. Cones animate.
+     Not standing on the deck, because there is nowhere for them to stand: the
+     top is 1.05 front to back, the decks and mixer take 0.66 of it and the
+     brow the rest, so a pair of cans laid anywhere on it either hangs off the
+     front edge into thin air or sits inside a turntable. Over the lip they
+     have the whole front panel to themselves, and it is where a pair actually
+     ends up between records.
+
+     Cups face out, flat to the panel — a cup is a disc, and a disc lying on
+     the axis that points at you reads as a cup rather than as an edge. */
+  const CAN_Z = 0.168, CAN_Y = DECK_Y - 0.06;
+  for (const hx of [-1.16, -0.86]) {
+    b.cylC(hx, CAN_Y, CAN_Z, 0.135, 0.135, 0.075, 10, C.canShell, Math.PI / 2, 0, 0);
+    b.cylC(hx, CAN_Y, CAN_Z + 0.045, 0.1, 0.1, 0.02, 10, C.canPad, Math.PI / 2, 0, 0);
+    b.cylC(hx, CAN_Y, CAN_Z - 0.03, 0.15, 0.15, 0.02, 10, C.canTrim, Math.PI / 2, 0, 0);
+    // The arm from the lip down to the cup.
+    b.box(hx, CAN_Y + 0.1, CAN_Z - 0.02, 0.035, 0.16, 0.045, C.canTrim);
+  }
+  // Headband over the lip: across the top, and lying back onto the deck.
+  b.box(-1.01, DECK_Y + 0.09, CAN_Z - 0.03, 0.34, 0.05, 0.075, C.canShell);
+  b.box(-1.01, DECK_Y + 0.1, 0.055, 0.3, 0.045, 0.14, C.canShell);
+  b.box(-1.01, DECK_Y + 0.145, 0.055, 0.24, 0.03, 0.1, C.canPad);     // the padding
+  /* Cable, off the left cup and down the panel. Two lengths with a kink in it,
+     placed as midpoints between endpoints that meet — tilted about their own
+     centres with the tilts guessed, they hung in the air as two separate
+     sticks. A cylinder rotated by +z leans its TOP toward -x, hence the signs. */
+  b.cylC(-1.22, CAN_Y - 0.218, CAN_Z, 0.013, 0.013, 0.176, 6, C.canTrim, 0, 0, -0.35);
+  b.cylC(-1.23, CAN_Y - 0.38, CAN_Z, 0.013, 0.013, 0.165, 6, C.canTrim, 0, 0, 0.245);
+
+  /* Speakers on stands at the back, turned in the way a pair gets aimed.
+
+     A cabinet is a box with a baffle set into the front of it, a port under
+     the drivers and a badge on it — without those it is just a black block
+     with two holes, which is what these were. The drivers themselves are
+     animated, so only what they sit in is here. */
   for (const side of [-1, 1]) {
-    const x = side * SPK_X;
-    b.box(x, F, SPK_Z, 0.5, 0.06, 0.5, C.metalDark);
-    b.cyl(x, F + 0.06, SPK_Z, 0.05, 0.06, 0.95, 6, C.metalDark);
-    // Turned in toward the middle, the way a pair actually gets aimed.
-    b.box(x, F + 1.0, SPK_Z, 0.72, 1.05, 0.6, C.speaker, -side * 0.32);
+    const x = side * SPK_X, ry = -side * 0.32;
+    b.box(x, F, SPK_Z, 0.46, 0.05, 0.46, C.metalDark);              // plate
+    b.box(x, F + 0.04, SPK_Z, 0.28, 0.03, 0.28, C.metal);
+    b.cyl(x, F + 0.06, SPK_Z, 0.045, 0.055, 0.9, 8, C.metalDark);   // column
+    b.cyl(x, F + 0.94, SPK_Z, 0.14, 0.14, 0.03, 8, C.metalDark);    // top plate
+
+    b.box(x, F + 0.97, SPK_Z, 0.72, 1.05, 0.6, C.speaker, ry);
+    // Baffle, inset, so the cabinet has a front rather than just a face.
+    const [fx, fz] = loc(x, SPK_Z, ry, 0, 0.302);
+    b.boxC(fx, F + 1.49, fz, 0.62, 0.95, 0.02, C.speakerFace, 0, ry, 0);
+    /* A badge under the drivers, and no bass port. There was one, and it sat
+       inside the bottom of the woofer — the cabinet only has 0.15 of baffle
+       below the driver and a port wide enough to read needs all of it. A
+       two-way with a badge is a speaker; a port poking out of a woofer is a
+       mistake. */
+    const [px2, pz2] = loc(x, SPK_Z, ry, 0, 0.313);
+    b.boxC(px2, F + 1.04, pz2, 0.17, 0.038, 0.014, C.brass, 0, ry, 0);
   }
 
-  // Synth on a stand, out front on the left.
+  /* Synth on an X-stand out front on the left. The stand has legs that cross
+     and feet that spread, rather than two posts on two plates; the body has an
+     end cheek at each side and a raised control panel behind the keys with the
+     pitch and mod wheels let into the left of it, which is the arrangement that
+     says keyboard rather than black plank. */
   for (const side of [-1, 1]) {
-    const [px, pz] = loc(SYN_X, SYN_Z, SYN_R, side * 0.66, 0);
-    b.box(px, F, pz, 0.07, 0.72, 0.07, C.metalDark);
-    b.box(px, F, pz, 0.1, 0.05, 0.5, C.metalDark, SYN_R);
+    const [px, pz] = loc(SYN_X, SYN_Z, SYN_R, side * 0.62, 0);
+    b.box(px, F, pz, 0.1, 0.045, 0.68, C.metalDark, SYN_R);         // foot
+    /* Two legs crossing, tilted enough to actually read as a cross. At the
+       shallow angle they had, the pair sat almost on top of each other and
+       came out as one thick post. The tilt is in the island's frame, so the
+       boxes take the stand's own rotation on Y as well. */
+    b.boxC(px, F + 0.37, pz, 0.045, 0.8, 0.045, C.metalDark, side * 0.3, SYN_R, 0);
+    b.boxC(px, F + 0.37, pz, 0.042, 0.78, 0.042, C.metal, -side * 0.3, SYN_R, 0);
   }
-  b.box(SYN_X, F + 0.72, SYN_Z, 1.72, 0.14, 0.54, 0x3f4348, SYN_R);
+  b.box(SYN_X, F + 0.72, SYN_Z, 1.72, 0.1, 0.54, 0x3f4348, SYN_R);   // body
+  for (const side of [-1, 1]) {                                      // end cheeks
+    const [cx, cz] = loc(SYN_X, SYN_Z, SYN_R, side * 0.8, 0);
+    b.box(cx, F + 0.72, cz, 0.12, 0.17, 0.56, C.woodDark, SYN_R);
+  }
+  // Raised panel behind the keys, with the two wheels at its left-hand end.
+  b.box(SYN_X, F + 0.82, SYN_Z, 1.6, 0.09, 0.2, 0x2f3338, SYN_R);
+  {
+    const [wx, wz] = loc(SYN_X, SYN_Z, SYN_R, -0.72, -0.03);
+    b.box(wx, F + 0.82, wz, 0.2, 0.02, 0.24, 0x24272b, SYN_R);
+    for (let k = 0; k < 2; k++) {
+      const [px3, pz3] = loc(SYN_X, SYN_Z, SYN_R, -0.765 + k * 0.09, -0.03);
+      b.cylC(px3, F + 0.855, pz3, 0.035, 0.035, 0.045, 8, C.knob, 0, SYN_R, Math.PI / 2);
+    }
+  }
   // Keys are meshes so they can be played — see animMusic.
   for (let i = 0; i < 4; i++) {
-    const [nx, nz] = loc(SYN_X, SYN_Z, SYN_R, -0.62 + i * 0.19, -0.16);
-    b.cyl(nx, F + 0.86, nz, 0.04, 0.04, 0.05, 6, C.brass);
+    const [nx, nz] = loc(SYN_X, SYN_Z, SYN_R, -0.42 + i * 0.24, -0.03);
+    b.cyl(nx, F + 0.87, nz, 0.035, 0.035, 0.04, 8, C.brass);
   }
 
   /* Record crate, out front on the right. Built as a box with nothing in it —
@@ -1493,7 +1794,7 @@ function buildMusic(b, g) {
     b.box(ex, F, ez, cw, CRATE_H, ct, C.wood, CRATE_R);
   }
 
-  pottedPlant(b, -2.9, -1.4, 1.15);
+  pottedPlant(b, -2.9, -1.4, 1.15, 27);
 }
 
 let spinDecks = null, burstMeters = null;
@@ -1501,6 +1802,12 @@ let thumpSpeakers = null, pullRecord = null, playKeys = null;
 // The mixer's own focus target, so the scene can tell when it is being read
 // and put its LISTEN cue up. Assigned where the targets are registered.
 let mixerTarget = null;
+// True once LISTEN has been tapped through to the two icons. Owned by
+// animMusic's own updater; declared here only so the click handler that sets
+// it (mixerTarget's act, registered further down) and the two icons' own hit
+// boxes (also registered further down) can all reach the same flag.
+let optionsOpen = false;
+let scTarget = null, spTarget = null;
 
 function animMusic(group) {
   const ups = [];
@@ -1567,19 +1874,33 @@ function animMusic(group) {
     caps.push(cap);
   }
 
-  /* LISTEN, over the mixer. Hidden until the mixer is the thing being looked
-     at, then it grows up out of the brow — the second tap is what opens
-     SoundCloud, and this is the only thing that says so. */
+  /* Over the mixer: LISTEN first, then — once you tap again — the two ways to
+     actually hear it. One panel, two things it can be showing, which is why
+     the icons are children of the same group that carries LISTEN rather than
+     a second pop-up of their own: they share its one rise. See MIX_CUE_Y for
+     why the panel sits where it does. */
   const cue = part(function (b) {
-    b.box(0, 0, 0, 0.52, 0.135, 0.02, C.mixerDark);
-    b.box(0, 0.004, 0.011, 0.5, 0.127, 0.01, 0x1b3038);
+    b.box(0, 0, 0, MIX_CUE_W, MIX_CUE_H, 0.02, C.mixerDark);
+    b.box(0, 0.005, 0.011, MIX_CUE_W - 0.02, MIX_CUE_H - 0.01, 0.01, 0x1b3038);
   });
-  cue.position.set(0, MIX_TOP + MIX_BROW_H + 0.06, MIX_BROW_Z - 0.02);
+  cue.position.set(0, MIX_CUE_Y, MIX_BROW_Z - 0.04);
   group.add(cue);
+
   const cueText = part(function (b) {
-    textMid(b, MUSIC_LINK.cue, 0, 0.105, 0.02, 0.013, C.ledCyan);
+    textMid(b, MUSIC_LINK.cue, 0, MIX_CUE_MID + 0.04, 0.02, 0.0115, C.ledCyan);
   }, true);
   cue.add(cueText);
+
+  // The two badges, sitting in that same panel once it has been asked twice.
+  const scIcon = makeSoundcloudIcon();
+  scIcon.position.set(MIX_ICON_X[0], MIX_CUE_MID, 0.018);
+  scIcon.visible = false;
+  cue.add(scIcon);
+  const spIcon = makeSpotifyIcon();
+  spIcon.position.set(MIX_ICON_X[1], MIX_CUE_MID, 0.018);
+  spIcon.visible = false;
+  cue.add(spIcon);
+
   cue.scale.set(1, 0.0001, 1);
   cue.visible = false;
   /* The sleeves standing in the record crate. Square, filed front to back, all
@@ -1603,15 +1924,26 @@ function animMusic(group) {
     sleeves.push(m);
   }
 
-  // Synth keys, played in a slow rolling figure rather than at random.
+  /* Synth keys, played in a slow rolling figure rather than at random.
+
+     Set out in FRONT of the control panel, not under it. They used to run from
+     local z -0.02 back to 0.24 while the panel occupies -0.1 to 0.1 and stands
+     higher, so the panel covered the back half of every key and a keyboard came
+     out as a row of little square buttons.
+
+     Black keys are narrower, shorter and set higher and further back than the
+     white ones, which is the only reason a row of blocks reads as a keyboard. */
   const keys = [];
   for (let i = 0; i < 13; i++) {
     const black = (i % 7 === 1 || i % 7 === 3 || i % 7 === 5);
     const m = part(function (b) {
-      b.box(-0.05, 0, -0.13, 0.1, 0.03, 0.26, black ? 0x2c2f33 : C.paper);
+      if (black) b.box(-0.032, 0, -0.055, 0.064, 0.038, 0.11, 0x24272b);
+      // Near enough touching: a keyboard's white keys have a hairline between
+      // them, not the gap a row of separate blocks would show.
+      else       b.box(-0.053, 0, -0.088, 0.106, 0.028, 0.176, C.paper);
     });
-    const [kx, kz] = loc(SYN_X, SYN_Z, SYN_R, -0.72 + i * 0.12, 0.11);
-    m.position.set(kx, F + 0.86, kz);
+    const [kx, kz] = loc(SYN_X, SYN_Z, SYN_R, -0.66 + i * 0.11, black ? 0.15 : 0.185);
+    m.position.set(kx, F + (black ? 0.872 : 0.862), kz);
     m.rotation.y = SYN_R;
     group.add(m);
     keys.push(m);
@@ -1655,6 +1987,17 @@ function animMusic(group) {
   burstMeters = function () { burst = 1; touched(); };
   const pMeter = phaser();
   let cueUp = 0;
+
+  /* Whether the panel is showing LISTEN or the two icons. Set true by the
+     mixer's own act(), defined where the target is registered below — a tap
+     that lands anywhere in the mixer's box while it is already the thing
+     focused reaches that act(), which is the moment to move past LISTEN.
+
+     Reset the instant the mixer stops being read, not left to whatever state
+     it was last in — arriving mid-pick, with LISTEN already swapped out for
+     icons you have not asked for yet, would be a strange way to meet it. */
+  optionsOpen = false;
+
   ups.push(function (t, dt, amt, idle) {
     burst = Math.max(0, burst - dt * 0.35);
     const a = Math.min(1, Math.max(amt, idle) + burst);
@@ -1671,9 +2014,18 @@ function animMusic(group) {
 
     // The cue only exists while the mixer is the thing being read.
     const want = (mixerTarget && activeDetail === mixerTarget) ? 1 : 0;
+    if (!want) optionsOpen = false;
     cueUp += (want - cueUp) * (1 - Math.pow(0.004, dt));
     cue.visible = cueUp > 0.01;
     cue.scale.y = Math.max(0.0001, cueUp);
+
+    cueText.visible = !optionsOpen;
+    scIcon.visible = optionsOpen;
+    spIcon.visible = optionsOpen;
+    // Each icon's own hit box exists only in the same moment it is drawn —
+    // see where they are registered below.
+    if (scTarget) scTarget.enabled = optionsOpen;
+    if (spTarget) spTarget.enabled = optionsOpen;
   });
 
   // Speaker cones, pushing air.
@@ -1737,7 +2089,7 @@ function buildProjects(b, g) {
     b.box(s.x, F + s.y, s.z, BLOCK_S, BLOCK_S, BLOCK_S, s.col, s.ry);
     blockLetter(b, s.x, F + s.y + BLOCK_S / 2, s.z, s.ry, s.ch);
   }
-  pottedPlant(b, -2.6, 2.4, 1.15);
+  pottedPlant(b, -2.6, 2.4, 1.15, 35);
   void g;
 }
 
@@ -2004,13 +2356,21 @@ function buildAbout(b, g) {
   b.box(0.8, topY, 0.78, 0.34, 0.05, 0.24, C.paper, 0.3);
   b.box(0.83, topY + 0.05, 0.8, 0.3, 0.02, 0.2, 0xe6e2d8, 0.3);
 
-  b.cyl(-1.02, topY, 0.22, 0.14, 0.16, 0.04, 8, C.metalDark);
-  b.boxC(-1.02, topY + 0.24, 0.22, 0.04, 0.44, 0.04, C.metalDark, 0.18, 0, 0);
-  b.cone(-0.94, topY + 0.5, 0.3, 0.17, 0.2, 8, C.brass, Math.PI, 0, 0);
+  /* Desk lamp. It was a cone on a stick on a puck; a lamp is a weighted base,
+     an arm with a joint in it, a shade with a lip, and a bulb you can see up
+     inside the shade — which is also what tells you it is switched on. */
+  b.cyl(-1.02, topY, 0.22, 0.13, 0.155, 0.035, 10, C.metalDark);
+  b.cyl(-1.02, topY + 0.035, 0.22, 0.105, 0.12, 0.03, 10, C.metal);
+  b.boxC(-1.02, topY + 0.2, 0.22, 0.032, 0.31, 0.032, C.metalDark, 0.1, 0, 0);
+  b.cyl(-0.99, topY + 0.34, 0.235, 0.045, 0.045, 0.05, 8, C.brass);   // the joint
+  b.boxC(-0.955, topY + 0.45, 0.27, 0.028, 0.2, 0.028, C.metalDark, 0.5, 0, 0);
+  b.cone(-0.93, topY + 0.55, 0.315, 0.175, 0.2, 10, C.brass, Math.PI, 0, 0);
+  b.cyl(-0.93, topY + 0.452, 0.315, 0.178, 0.168, 0.028, 10, 0xb98a3e);  // the lip
+  g.cyl(-0.93, topY + 0.462, 0.315, 0.075, 0.075, 0.05, 8, 0xffeec2);    // lit bulb
 
   chair(b, 0.1, 1.7, Math.PI, C.woodDark);
-  pottedPlant(b, 2.7, -2.4, 1.3);
-  pottedPlant(b, -2.5, 2.3, 0.9);
+  pottedPlant(b, 2.7, -2.4, 1.3, 43);
+  pottedPlant(b, -2.5, 2.3, 0.9, 51);
   crate(b, -1.9, F + 0.05, 2.6, 0.5, 0.3);
   for (let i = 0; i < 4; i++) {
     b.box(-0.9, F + 0.05 + i * 0.075, 2.5, 0.42, 0.075, 0.32, BOOKS[i + 2], i * 0.16);
@@ -2487,10 +2847,11 @@ function animHourglass(group) {
 ============================================================================= */
 
 const canvas = document.getElementById("stage");
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: false });
-renderer.setPixelRatio(1);
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
 renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFShadowMap;
+// Soft edges now that a shadow is being looked at directly rather than through
+// a pixel grid that was hiding the stepping anyway.
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const PAPER = 0xf7f6f3;
 
@@ -2825,18 +3186,44 @@ ZONES.forEach(function (def, i) {
   if (def.id === "music") {
     swings(addDetail(zone, -0.85, DECK_Y + 0.2, -0.35, 0.85, 0.4, 0.9, 0.6, 0.5,
                      function () { if (spinDecks) spinDecks(); }, 0.7));
-    /* The mixer is the way out to SoundCloud now, so it is deliberately NOT a
-       swings() target: act must not fire on the first touch. One tap brings the
-       camera onto it and puts LISTEN up over the brow, and only the second tap
-       opens the link — nobody should be sent off the site by a tap that was
-       aimed at looking at something.
+    /* The mixer is the way out to SoundCloud and Spotify now, so it is
+       deliberately NOT a swings() target: act must not fire on the first
+       touch. One tap brings the camera onto it and puts LISTEN up over the
+       brow; the second tap does not leave the site on its own any more, it
+       swaps LISTEN for the two icons — nobody should be sent off the site by
+       a tap that was aimed at looking at something, and now nobody is sent to
+       one destination when they may have wanted the other.
 
        The box covers the brow and the top face together, which is all of the
        mixer you can see from out front. */
     mixerTarget = addDetail(zone, 0, MIX_TOP + 0.1, -0.44, 0.8, 0.4, 0.72, 0.52, 0.4,
-                            function () { window.open(MUSIC_LINK.href, "_blank", "noopener"); },
+                            function () { optionsOpen = true; touched(); },
                             0.34);
     mixerTarget.onFocus = function () { if (burstMeters) burstMeters(); };
+
+    /* The two icons themselves. Instant, like the clipboard rows: by the time
+       either exists to be tapped the camera is already sitting on the mixer,
+       so tapping one should open its link on the spot, not spend a moment
+       flying somewhere it already is.
+
+       Built off the same MIX_ICON_X and MIX_CUE_MID the meshes are placed with
+       in animMusic, plus the panel's own offset, so the two cannot drift apart
+       — a hit box that does not agree with what is drawn under it is a tap that
+       misses something you can plainly see. Each box is only as wide as its own
+       badge, which is why they are not the same width. */
+    const scHref = (MUSIC_LINK.links.find(function (l) { return l.id === "soundcloud"; }) || {}).href;
+    const spHref = (MUSIC_LINK.links.find(function (l) { return l.id === "spotify"; }) || {}).href;
+    const ICON_Y = MIX_CUE_Y + MIX_CUE_MID, ICON_Z = MIX_BROW_Z - 0.022;
+    scTarget = addDetail(zone, MIX_ICON_X[0], ICON_Y, ICON_Z, 0.21, 0.13, 0.72, 0.52, 0.4,
+                         function () { if (scHref) window.open(scHref, "_blank", "noopener"); },
+                         0.12);
+    scTarget.instant = true;
+    scTarget.enabled = false;
+    spTarget = addDetail(zone, MIX_ICON_X[1], ICON_Y, ICON_Z, 0.15, 0.13, 0.72, 0.52, 0.4,
+                         function () { if (spHref) window.open(spHref, "_blank", "noopener"); },
+                         0.12);
+    spTarget.instant = true;
+    spTarget.enabled = false;
     for (const side of [-1, 1]) {
       swings(addDetail(zone, side * SPK_X, F + 1.5, SPK_Z, 0.9, 1.15, 0.9, 0.8, 0.25,
                        function () { if (thumpSpeakers) thumpSpeakers(); }));
@@ -3462,50 +3849,29 @@ function resize() {
   cssW = Math.max(1, window.innerWidth);
   cssH = Math.max(1, window.innerHeight);
 
-  /* The whole pixel-art effect is to render small and scale up. What decides
-     whether that reads as pixel art or as a low-resolution image is whether
-     the scale factor is a whole number.
+  /* Rendered at the screen's own resolution. This used to draw into a buffer
+     about 720 across and let the browser blow it up without smoothing, which
+     put the pixel-art look in the RENDERER — and made everything pay for it:
+     a whiteboard could hold only so much lettering, a curve on a screen came
+     out as a staircase, and every edge in the world crawled a pixel at a time
+     as the camera moved.
 
-     It was not. Rendering 1171 wide into a 1440 window is a scale of 1.23, and
-     the browser, told to scale without smoothing, has to make some source
-     pixels one screen pixel wide and others two. So the grid was never square
-     and never even, and every pixel changed size as the camera moved. That is
-     the difference between pixel art and a blown-up JPEG.
+     The look is in the MODELS instead, where it belongs. Everything here is
+     built out of square blocks and coarsely faceted cylinders, and reading
+     those cleanly at full resolution is a sharper version of the same thing,
+     not a different thing. Nothing about the world changed; it is just no
+     longer being viewed through a screen door.
 
-     So work in device pixels, pick a WHOLE number of them per rendered pixel,
-     and size the canvas to exactly that multiple. Every pixel is then the same
-     square, and edges stay put. The canvas ends up at most one pixel-block
-     larger than the window, which is why it is centred and the body clips. */
-  const dpr = clamp(window.devicePixelRatio || 1, 1, 3);
-  const devW = Math.max(1, Math.round(cssW * dpr));
-  const devH = Math.max(1, Math.round(cssH * dpr));
+     The ratio is capped at two. Past that it is spending four times the fill
+     rate on a difference nobody can see at arm's length. */
+  const dpr = clamp(window.devicePixelRatio || 1, 1, 2);
+  renderer.setPixelRatio(dpr);
+  renderer.setSize(cssW, cssH, false);
+  renderAspect = cssW / cssH;
 
-  /* Aim for a number of pixels across and let the device ratio fall where it
-     may, rather than the other way round. Two screens the same size with
-     different ratios then get the same picture: a plain 1440 monitor puts two
-     device pixels into each one, a retina 1440 puts four, and both end up
-     drawing the same 720-wide world. Resolution is what decides whether the
-     lettering on a whiteboard can be read, so it is the thing to hold still.
-
-     Never below two device pixels to one, or there is no pixel art left. */
-  const target = cssW < 700 ? 400 : 820;
-  const scale = Math.max(2, Math.round(devW / target));
-
-  const w = Math.ceil(devW / scale);
-  const h = Math.max(1, Math.ceil(devH / scale));
-  renderer.setSize(w, h, false);
-
-  // Back to CSS pixels for the layout. Fractions are fine and wanted here: the
-  // grid that has to stay whole is the device-pixel one, and this is the value
-  // that keeps it whole.
-  canvas.style.width = (w * scale / dpr) + "px";
-  canvas.style.height = (h * scale / dpr) + "px";
-
-  // The camera has to frame what is actually rendered, not the window, since
-  // the two now differ by up to one pixel block.
-  renderAspect = w / h;
-
-  const shadowRes = cssW < 700 ? 1024 : 2048;
+  // A shadow now sits next to a full-resolution edge, so it has to be a good
+  // deal finer than it used to get away with being.
+  const shadowRes = cssW < 700 ? 2048 : 4096;
   if (sun.shadow.mapSize.x !== shadowRes) {
     sun.shadow.mapSize.set(shadowRes, shadowRes);
     if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
@@ -3559,7 +3925,20 @@ const lessMotion = window.matchMedia
 
 function frame(now) {
   requestAnimationFrame(frame);
-  const dt = Math.min(0.05, (now - last) / 1000);
+  /* The clamp exists for one reason: a tab backgrounded for a while and then
+     resumed must not replay the missed time in a single lurch — an island
+     should not visibly leap across the ring because the frame rate stalled.
+
+     It does not exist to assume a frame rate. It was 0.05 (a 20fps floor),
+     which is fine for a cheap scene that always runs well above that — but
+     this one no longer always does, and every dt-driven motion in the world
+     shares this one number: below the floor, all of it quietly plays in slow
+     motion, in exact proportion to how far short of 20fps the frame lands.
+     That is not a guard against a pathological jump, it is a tax on ordinary
+     slow frames. 0.1 still catches the real pathological case — a multi-
+     second gap is clamped hard either way — while giving a phone room to
+     dip into single digits without the picture visibly dragging. */
+  const dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   const t = now / 1000;
 
