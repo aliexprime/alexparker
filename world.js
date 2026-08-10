@@ -2636,13 +2636,30 @@ function animAbout(group, def, zone) {
 ============================================================================= */
 
 const ORB_R = 0.26;
+/* An orb is the one thing here that has to read as ROUND. Everything else in
+   this world is happy being a handful of flat faces, but a ball with ten of
+   them has a long straight edge along the bottom of its silhouette, and at the
+   size these are seen that edge looks like something has sliced the orb off
+   rather than like a facet. Subdivided once more it is 320 faces: still
+   visibly cut, which is the house style, but cut into a sphere.
+
+   And the glass is a glaze, not a bag. At a tenth of the radius the shell
+   stands off the light inside it as a grey band all the way round; at six
+   hundredths it is the rim of a ball. */
+const ORB_FACETS = 2;
+const ORB_CORE = 0.94;
 
 /* The rack is an arc bowed away from the front, which is what lets three rows
    of orbs all face the same way — the ends of a straight shelf turn edge-on and
    the orbs out there stop reading as orbs. Slots are angles ON that arc rather
    than positions along it, so they stay evenly spaced however many there are. */
 const RACK_CZ = 1.0, RACK_R = 3.4;         // centre and radius of the arc
-const RACK_TIERS = [F + 2.55, F + 1.85, F + 1.15];    // shelf surfaces, top down
+/* Shelf surfaces, top down. The gap between them is not about fitting an orb
+   in — 0.52 of ball would fit in far less. It is that the shelf above stands a
+   third of a unit PROUD of the one below, and at the angle this room is met
+   that overhang reaches down and takes the top off every orb on the shelf
+   under it. 0.80 apart is the spacing at which it just misses. */
+const RACK_TIERS = [F + 2.55, F + 1.75, F + 0.95];
 const RACK_SPREAD = 0.72;                  // half the arc the slots occupy
 const RACK_PER = 7;                        // slots on one shelf
 
@@ -2677,7 +2694,9 @@ function rackSlot(tier, i) {
   const a = (t - 0.5) * 2 * RACK_SPREAD;
   return {
     x: Math.sin(a) * RACK_R,
-    y: RACK_TIERS[tier] + ORB_R,
+    // A shade clear of the shelf, seated in the lip rather than sitting on the
+    // board — see the lip in buildMemoryRack for what that buys.
+    y: RACK_TIERS[tier] + ORB_R + 0.04,
     z: RACK_CZ - Math.cos(a) * RACK_R,
     a: a
   };
@@ -2856,21 +2875,6 @@ function makeMemoryScene(id) {
   return grp;
 }
 
-/** A second drawing of a scene that shares its geometry — the orb keeps one and
-    the projector gets the other, and there is only ever one of each mesh built.
-    Nothing here casts or receives: a memory being played is light, and light
-    that throws a shadow onto the shelf behind it is a solid object. */
-function reuseScene(src) {
-  const out = new THREE.Group();
-  src.children.forEach(function (m) {
-    const c = new THREE.Mesh(m.geometry, m.material);
-    c.castShadow = false;
-    c.receiveShadow = false;
-    out.add(c);
-  });
-  return out;
-}
-
 /* The room on the underside, in two halves, because they arrive at different
    times. This one is the floor of it — the rail, the stand and the lever — and
    it is part of the island: it turns over with it and is simply there when the
@@ -2930,8 +2934,16 @@ function buildMemoryRack(b, g) {
   rackArc(b, RACK_R + 0.42, F, RACK_TIERS[0] + 0.5 - F, 0.3, C.memWall, RACK_SPREAD + 0.2, 13);
   for (let tier = 0; tier < RACK_TIERS.length; tier++) {
     const y = RACK_TIERS[tier];
-    rackArc(b, RACK_R, y - 0.07, 0.07, 0.62, C.memRack, RACK_SPREAD + 0.14, 13);
-    rackArc(b, RACK_R - 0.28, y, 0.05, 0.045, C.memBrass, RACK_SPREAD + 0.14, 13);   // front lip
+    rackArc(b, RACK_R, y - 0.07, 0.07, 0.66, C.memRack, RACK_SPREAD + 0.14, 13);
+    /* Right up against the orbs and low, which is not fussiness: this is a
+       rack looked at from 34 degrees above, and anything standing in FRONT of a
+       ball at that angle hides it to a height of its own plus its distance
+       times tan(34). At the width and height it started, the lip was taking the
+       bottom half of every orb and leaving a row of domes. Against them and
+       barely proud, it takes a third — which is what a ball in a rack looks
+       like. Still clear of them: an orb's front face is ORB_R in front of its
+       slot, and a lip that reaches back past that z-fights rather than holds. */
+    rackArc(b, RACK_R - 0.232, y, 0.03, 0.045, C.memBrass, RACK_SPREAD + 0.14, 13);
     for (let i = 0; i < RACK_PER; i++) {
       if (live[tier + ":" + i]) continue;
       const s = rackSlot(tier, i);
@@ -2940,15 +2952,14 @@ function buildMemoryRack(b, g) {
          identical grey balls reads as packaging, and the one thing a wall of
          memories should not look like is stock. */
       const tint = ORB_DIM[(tier * 5 + i * 3) % ORB_DIM.length];
-      g.rockS(s.x, s.y, s.z, ORB_R * 0.9, tint, 1, 1, 1, 1, 0, 0, 0);
+      b.rockS(s.x, s.y, s.z, ORB_R * ORB_CORE, tint, ORB_FACETS, 1, 1, 1, 0, 0, 0);
     }
   }
-  // Uprights at the ends of the rack, so it is standing rather than floating.
-  for (const side of [-1, 1]) {
-    const a = side * (RACK_SPREAD + 0.16);
-    b.box(Math.sin(a) * (RACK_R + 0.1), F, RACK_CZ - Math.cos(a) * (RACK_R + 0.1),
-          0.13, RACK_TIERS[0] + 0.5 - F, 0.62, C.memRack, -a);
-  }
+  /* No end posts. There were two, and they are gone rather than moved: the rack
+     is an arc that curves TOWARD the viewer at its ends, so anything standing
+     out there — at any radius, at any width — is nearer the camera than the
+     orbs beside it and takes a bite out of them. The wall is wider than the
+     shelves and already carries them. */
 
 }
 
@@ -2970,9 +2981,19 @@ function animMemories(group, zone) {
   const list = (MEMORIES || []).slice(0, RACK_PER * RACK_TIERS.length);
   const slots = memSlots(list.length);
 
-  const glassMat = new THREE.MeshLambertMaterial({
-    color: C.orbGlass, transparent: true, opacity: 0.34,
-    depthWrite: false, side: THREE.DoubleSide
+  /* Glass. FrontSide, not DoubleSide: on a sphere the far hemisphere adds
+     nothing but a second layer of the same tint blended over the first, which
+     is what turned these into dull grey balls instead of a glaze over a light.
+     No depth write either, so what is inside is never hidden by its own case. */
+  /* Glass. Unlit and pale, so the rim of it comes up as a highlight against
+     the dark room instead of the dark ring a lit glaze gives you — the faces
+     around the edge of a sphere are the ones pointing away from every light in
+     the place, and shading them is what made these look like ball bearings.
+     FrontSide, because on a sphere the far hemisphere only lays the same tint
+     over the near one twice; no depth write, so nothing is hidden by its case. */
+  const glassMat = new THREE.MeshBasicMaterial({
+    color: C.orbGlass, transparent: true, opacity: 0.2,
+    depthWrite: false, side: THREE.FrontSide
   });
 
   /* The projector. Everything it shows hangs off this one group so the whole
@@ -3021,19 +3042,30 @@ function animMemories(group, zone) {
     orb.position.set(slot.x, slot.y, slot.z);
     rack.add(orb);
 
-    // Shell, core and the memory itself, smallest thing first so the glass
-    // sorts behind nothing it needs to be in front of.
-    const core = new THREE.Mesh(new THREE.IcosahedronGeometry(ORB_R * 0.66, 1),
-                                new THREE.MeshBasicMaterial({ color: tint }));
-    const shell = new THREE.Mesh(new THREE.IcosahedronGeometry(ORB_R, 1), glassMat);
+    /* A light in a glass case, and nothing else in there.
+
+       The memory used to be in here too — the same diorama that plays over the
+       stand, shrunk to sit inside the glass. It was a nice idea and it looked
+       terrible: a scene stands on a plate a whole unit across and a hair thick,
+       and shrunk into a ball that plate is a grey bar sliced clean through the
+       middle of it. There is nowhere for a landscape to go inside a sphere.
+       The projector is what the memory is for; the orb is what holds it.
+
+       The core nearly fills the shell, so the glass reads as a skin on a light
+       rather than a bag around a smaller ball. */
+    /* Lit AND glowing. Unlit alone is a flat disc of colour with no facets in
+       it at all, which at this size reads as a sticker on the shelf; lit alone
+       goes dark on the sides, and an orb is a light. The emissive is what keeps
+       it bright, the diffuse is what gives it a shape. */
+    const core = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(ORB_R * ORB_CORE, ORB_FACETS),
+      new THREE.MeshLambertMaterial({ color: dimTo(tint, 0.5),
+                                      emissive: dimTo(tint, 0.66) }));
+    const shell = new THREE.Mesh(new THREE.IcosahedronGeometry(ORB_R, ORB_FACETS), glassMat);
+    orb.add(core);
+    orb.add(shell);
 
     const scene = makeMemoryScene(entry.scene);
-    const inside = reuseScene(scene);
-    inside.scale.setScalar(ORB_R * 1.15);
-    inside.position.y = -ORB_R * 0.34;
-    orb.add(core);
-    orb.add(inside);
-    orb.add(shell);
 
     // The same memory again, over the stand. Nothing written under it: every
     // other scene in this world says what it is by what is in it, and a memory
@@ -4365,12 +4397,19 @@ function focusZone(zone) {
      at from 34 degrees up, and the rack stands two and a half units BEHIND the
      stand — at that angle depth reads as height, and a frame cut to the rack's
      actual top loses the whole back row off the top of the screen. */
+  /* And the room is met from much lower down than everything else. Two
+     reasons, and they are the same reason: it is a place rather than a model of
+     one, and every orb on the rack sits behind a lip — at 34 degrees above,
+     anything in front of a ball hides it to a height of its own plus its
+     distance times tan(34), which was taking a third of every orb and leaving
+     a shelf of domes. At 24 it takes a sixth. */
+  if (room) want.el = 0.42;
   want.fitH = jar ? 4.6 : (room ? 3.4 : 5.2);
-  want.fitV = jar ? 3.5 : (room ? 2.95 : 3.7);
+  want.fitV = jar ? 3.5 : (room ? 2.65 : 3.7);
   want.scale = 1;
   want.sx = 0;
   want.sy = 0;
-  want.target.set(zone.group.position.x, jar ? 2.1 : (room ? 2.15 : 1.4),
+  want.target.set(zone.group.position.x, jar ? 2.1 : (room ? 2.12 : 1.4),
                   zone.group.position.z);
   startMove();
 
