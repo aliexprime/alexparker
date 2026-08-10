@@ -161,26 +161,22 @@ export const JAR_ZONE = {
 
 /* The memory shelf, on the underside of the centre island. One entry per orb,
    in shelf order: they fill the bottom shelf first and work upward, and every
-   slot they do not take gets a dim orb so the rack reads as a shelf rather than
-   a display of five things.
+   slot they do not take gets a dim orb — so the rack reads as a shelf of
+   memories with a few of them lit rather than as a display of five things.
+   Twenty-one slots, three shelves of seven.
 
    `tint` is the colour it glows and must be one of joy, sadness, fear, disgust,
    anger or core — the six from the film, and nothing else is a valid value.
    `scene` names the diorama built for it in world.js: the memory itself lives
-   there, as actual geometry, and adding one means adding a case to
-   makeMemoryScene.
+   there, as actual geometry, and adding one means adding a branch to
+   makeMemoryScene. The two together are the whole seam — a line here and a
+   diorama there.
 
    There is no title, and there should not be. Nothing in this world is labelled
    from the outside; every scene says what it is by what is in it, and a memory
    with a caption under it is a slide rather than a memory.
 
-   These five are placeholders. They exist to show what the shelf DOES, so they
-   are deliberately generic — each one is meant to be replaced by a scene built
-   from a real photograph. Known scenes: beach, summit, city, campfire, stage. */
+   Real ones go in as they are made. */
 export const MEMORIES = [
-  { scene: "beach",    tint: "joy" },
-  { scene: "summit",   tint: "core" },
-  { scene: "city",     tint: "sadness" },
-  { scene: "campfire", tint: "disgust" },
-  { scene: "stage",    tint: "anger" }
+  { scene: "haystage", tint: "joy" }
 ];

@@ -159,7 +159,30 @@ const C = {
   memBase:    0x191c25,   // the edge under the memory floor, darker than it
   memRack:    0x6d6862,
   memBrass:   0xc9a24e,
-  memBeam:    0xbfe6f5
+  memBeam:    0xbfe6f5,
+
+  /* The hay-bale stage, and the first thing to know about it is that it is a
+     NIGHT scene lit into a world that has a sun in it. Nothing here can be
+     given the colour the thing actually is: hay under a string of bulbs is not
+     hay-coloured, and a field at midnight is nearly black. So every base colour
+     below is already most of the way down, and what comes out the far side of
+     the light is what the photograph looks like. The bulbs and the two mirror
+     balls are the exceptions — they go in the unlit pass, because they are the
+     light rather than things the light is falling on. */
+  hay:        0x7d6935,
+  hayTwine:   0x483c22,
+  nightField: 0x232a20,
+  stageWood:  0x453424,
+  stageDark:  0x352a1d,
+  banner:     0x9aa0ad,
+  pa:         0x1b1c21,
+  paFace:     0x2a2c33,
+  djOrange:   0xd9581f,
+  bulb:       0xffd9a0,
+  discoWarm:  0xffb066,
+  discoCool:  0x8fd0f0,
+  figLeg:     0x2b2f3a,
+  figSkin:    0xa9805e
 };
 
 const BOOKS = [0xb5553f, 0x4a7a8c, 0xc9a44c, 0x6b8f5e, 0x8a6b9e, 0xc2725e,
@@ -2766,106 +2789,184 @@ const ORB_DIM = [C.memJoy, C.memSad, C.memFear, C.memDisgust, C.memAnger, C.memC
    simple: they are showing what the mechanism does, not what the memories are.
 */
 
-/** A person, about a tenth of a unit tall. At this size a figure is a body, a
-    head and nothing else — legs and arms land under a pixel and only make the
-    silhouette noisy. */
-function tinyFigure(b, x, y, z, h, top, skin) {
-  b.box(x, y, z, 0.045, h * 0.62, 0.035, top);
-  b.rockS(x, y + h * 0.62 + h * 0.19, z, h * 0.2, skin, 0, 1, 1, 1, 0, 0, 0);
+/** A person. `h` is how tall, `ry` which way they are facing (0 is toward +z,
+    which is out of the front of the diorama).
+
+    Legs and arms, which they did not have. A memory is projected at MEM_SHOW_S
+    — most of an island across — so a figure a seventh of the diorama tall comes
+    out over a hundred pixels high, and at that size a box with a head on it is
+    a skittle. The limbs cost four boxes and are the difference between a crowd
+    and a row of bollards. */
+function tinyFigure(b, x, y, z, h, top, skin, ry) {
+  const r = ry || 0;
+  const leg = h * 0.42, torso = h * 0.36;
+  for (const s of [-1, 1]) {
+    const [lx, lz] = loc(x, z, r, s * h * 0.09, 0);
+    b.box(lx, y, lz, h * 0.12, leg, h * 0.14, C.figLeg, r);
+    const [ax, az] = loc(x, z, r, s * h * 0.19, 0);
+    b.box(ax, y + leg, az, h * 0.09, torso * 0.94, h * 0.12, top, r);
+  }
+  b.box(x, y + leg, z, h * 0.30, torso, h * 0.17, top, r);
+  b.rockS(x, y + leg + torso + h * 0.115, z, h * 0.13, skin, 1, 1, 1, 1, 0, 0, 0);
 }
 
 function makeMemoryScene(id) {
   const b = new Builder(), g = new Builder();
   const r = rng(id.length * 977 + 13);
 
-  if (id === "beach") {
-    b.box(0, -0.06, 0, 1.0, 0.06, 1.0, 0xe6d2a2);                    // sand
-    b.box(0, 0, -0.28, 1.0, 0.035, 0.44, 0x5f9fb4);                  // sea
-    b.box(0, 0.03, -0.075, 1.0, 0.018, 0.05, 0xeef3f2);              // the break
-    b.box(0.16, 0, 0.06, 0.022, 0.3, 0.022, 0xb8a88c);               // umbrella pole
-    b.cone(0.16, 0.34, 0.06, 0.2, 0.1, 8, 0xd0685a, 0, 0, 0);
-    b.box(-0.2, 0, 0.14, 0.19, 0.016, 0.25, 0xe0b552);               // towel
-    tinyFigure(b, -0.03, 0, 0.02, 0.16, 0x4f7fa8, 0xd6a97e);
-    tinyFigure(b, 0.05, 0, 0.09, 0.13, 0xd0685a, 0xd6a97e);
-    for (let i = 0; i < 5; i++) {
-      b.rockS(-0.45 + r() * 0.9, 0.005, 0.2 + r() * 0.24, 0.02 + r() * 0.015,
-              0xcbb489, 0, 1, 0.6, 1, 0, 0, 0);
-    }
+  /* Nothing yet. The five that were here — a beach, a climb, a city, a fire, a
+     show — were stand-ins built to prove the shelf worked, and they did that.
+     Real memories go here, one branch each, built from a photograph.
 
-  } else if (id === "summit") {
-    b.box(0, -0.06, 0, 1.0, 0.06, 1.0, 0x8d8a80);
-    const peaks = [[-0.24, -0.2, 0.3, 0.46], [0.06, -0.3, 0.36, 0.6], [0.32, -0.12, 0.24, 0.34]];
-    for (const [px, pz, pr, ph] of peaks) {
-      b.cone(px, ph / 2, pz, pr, ph, 6, 0x6f6a66, 0, 0, 0);
-      b.cone(px, ph - ph * 0.16, pz, pr * 0.34, ph * 0.32, 6, 0xeceff2, 0, 0, 0);   // snow
-    }
-    for (let i = 0; i < 7; i++) {                                    // the way up
-      b.box(-0.34 + i * 0.09, 0.005, 0.36 - i * 0.035, 0.07, 0.012, 0.07, 0xa89d8c);
-    }
-    tinyFigure(b, 0.06, 0.28, -0.02, 0.15, 0xd0685a, 0xd6a97e);
-    b.box(0.04, 0.34, -0.05, 0.05, 0.055, 0.03, 0x4f7fa8);           // the pack
+     What a branch looks like:
 
-  } else if (id === "city") {
-    b.box(0, -0.06, 0, 1.0, 0.06, 1.0, 0x4b5164);
-    const towers = [[-0.34, -0.24, 0.17, 0.46], [-0.1, -0.32, 0.14, 0.62],
-                    [0.14, -0.2, 0.18, 0.38], [0.36, -0.3, 0.13, 0.52],
-                    [0.02, -0.05, 0.12, 0.26]];
-    /* Windows on every side, in the glow pass so they read as lit rather than
-       painted. Every side, not just the one facing out: a memory turns while it
-       is playing, and a tower lit on one face goes dark as it comes round. */
-    for (const [tx, tz, tw, th] of towers) {
-      b.box(tx, 0, tz, tw, th, tw * 0.9, 0x6c7691);
-      for (const [nx, nz] of [[0, 1], [1, 0], [0, -1], [-1, 0]]) {
-        const out = nx ? tw * 0.5 : tw * 0.45;      // half the box on that axis
-        const across = nx ? tw * 0.45 : tw * 0.5;   // and half the span along it
-        for (let row = 0; row < Math.floor(th / 0.07); row++) {
-          for (let col = -1; col <= 1; col++) {
-            if (r() < 0.42) continue;
-            const off = col * across * 0.56;
-            g.box(tx + nx * (out + 0.006) + (nx ? 0 : off),
-                  0.03 + row * 0.07,
-                  tz + nz * (out + 0.006) + (nz ? 0 : off),
-                  nx ? 0.012 : across * 0.4, 0.036, nz ? 0.012 : across * 0.4,
-                  r() < 0.25 ? 0x9fd4e8 : C.ledAmber);
-          }
-        }
+       if (id === "whatever") {
+         b.box(0, -0.06, 0, 1.0, 0.06, 1.0, groundColour);   // the ground
+         ... everything standing on it, in `b` ...
+         ... anything that should read as LIT in `g` ...
+       }
+
+     The rules the stand-ins taught, worth keeping:
+
+     - About a unit across, standing on y = 0, front toward +z. It is scaled up
+       to MEM_SHOW_S over the stand, so a unit here is most of an island there.
+     - Everything is well under AO_MIN, so nothing picks up a contact skirt and
+       the colours stay flat. That is right for something being projected.
+     - It TURNS while it plays. Anything detailed on one face only goes blank
+       as it comes round — the placeholder city had to be lit on all four sides
+       for that reason.
+     - Use tinyFigure for people. At this size a figure is a body and a head;
+       limbs land under a pixel and only make the silhouette noisy. */
+
+  if (id === "haystage") {
+    /* Three of them behind the decks at a festival, on a stage built out of hay
+       bales, at night. The whole of it is lit by string lights — which is why
+       the field is nearly black, why the hay is dark, and why the bulbs, the
+       two mirror balls and one orange jacket are the only things in here with
+       any real colour. */
+
+    b.box(0, -0.06, 0, 1.0, 0.06, 1.0, C.nightField);              // the field
+
+    /* The stage is a wall of bales. Two courses of four, the top one shoved
+       half a hand off the bottom, because a stack that lines up perfectly is a
+       wall and this is a stack. */
+    const BW = 0.19, BH = 0.12, BD = 0.30;
+    function bale(bx, by, bz, ry, d) {
+      const dd = d || BD;
+      const rr = ry || 0;
+      b.box(bx, by, bz, BW, BH, dd, C.hay, rr);
+      for (const t of [-0.055, 0.055]) {                           // twine
+        const [tx, tz] = loc(bx, bz, rr, t, 0);
+        b.box(tx, by, tz, 0.014, BH, dd + 0.006, C.hayTwine, rr);
+      }
+      // Straw is striated, and three lines across a face is the whole
+      // difference between a bale and a brown box.
+      for (let k = 1; k <= 3; k++) {
+        const [sx, sz] = loc(bx, bz, rr, 0, dd / 2);
+        b.box(sx, by + k * BH / 4 - 0.004, sz, BW * 0.98, 0.007, 0.006, C.hayTwine, rr);
       }
     }
-    b.box(0, 0.005, 0.3, 1.0, 0.012, 0.2, 0x3a3f4e);                 // the road
-    for (let i = 0; i < 5; i++) g.box(-0.4 + i * 0.2, 0.018, 0.3, 0.08, 0.008, 0.02, 0xd8d2c0);
+    for (let i = 0; i < 4; i++) {
+      bale(-0.285 + i * BW, 0, -0.05, 0);
+      bale(-0.285 + i * BW + (i === 3 ? -0.03 : 0.03), BH, -0.05, 0);
+    }
+    bale(-0.44, 0, 0.26, 0.42);                                    // and a few loose
+    bale(0.46, 0, 0.2, -0.3);
+    bale(0.4, 0, -0.36, 0.18);
 
-  } else if (id === "campfire") {
-    b.box(0, -0.06, 0, 1.0, 0.06, 1.0, 0x5e7a4e);
-    for (const s of [-1, 1]) {                                       // the tent
-      b.boxC(-0.24 + s * 0.075, 0.11, -0.16, 0.02, 0.3, 0.34, 0xd8cdb4, 0, 0, s * 0.44);
+    /* Between the bales and the deck: the frame, with two pale banners hung
+       across the front of it. In the photograph they are the brightest thing
+       below the booth, because both mirror balls are throwing onto them. */
+    for (const px of [-0.26, 0.26]) {
+      for (const pz of [-0.16, 0.1]) b.box(px, 2 * BH, pz, 0.03, 0.18, 0.03, C.stageDark);
     }
-    b.boxC(-0.24, 0.25, -0.16, 0.03, 0.03, 0.36, 0xb8a88c);          // ridge
-    for (const [lx, lz, lr] of [[0.14, 0.16, 0.5], [0.3, -0.02, -0.9]]) {
-      b.cylC(lx, 0.03, lz, 0.03, 0.03, 0.28, 6, C.woodDark, 0, lr, Math.PI / 2);
-    }
-    b.cyl(0.22, 0, 0.06, 0.11, 0.13, 0.03, 8, 0x4a4540);             // fire ring
-    g.cone(0.22, 0.07, 0.06, 0.075, 0.14, 6, 0xf08a3c, 0, 0, 0);     // and the fire
-    g.cone(0.22, 0.13, 0.06, 0.04, 0.1, 6, 0xffd45e, 0, 0, 0);
-    tinyFigure(b, 0.06, 0, 0.2, 0.13, 0x4f7fa8, 0xd6a97e);
-    tinyFigure(b, 0.36, 0, 0.2, 0.13, 0xd0685a, 0xd6a97e);
-
-  } else if (id === "stage") {
-    b.box(0, -0.06, 0, 1.0, 0.06, 1.0, 0x3c3f4b);
-    b.box(0, 0, -0.28, 0.86, 0.09, 0.4, 0x545866);                   // the stage
-    b.box(0, 0.09, -0.46, 0.86, 0.34, 0.03, 0x2c2f39);               // backdrop
-    for (const lx of [-0.3, 0, 0.3]) {                               // three lamps
-      b.box(lx, 0.4, -0.42, 0.05, 0.05, 0.05, C.metalDark);
-      g.cone(lx, 0.26, -0.3, 0.14, 0.3, 7, 0xffe9b0, 0, 0, 0);
-    }
-    tinyFigure(b, 0, 0.09, -0.24, 0.17, 0xd0685a, 0xd6a97e);
-    for (let i = 0; i < 22; i++) {                                   // the room
-      const cx = -0.44 + r() * 0.88, cz = 0.02 + r() * 0.42;
-      b.box(cx, 0, cz, 0.045, 0.09 + r() * 0.05, 0.045, r() < 0.5 ? 0x4a5164 : 0x554a63);
+    for (const bx of [-0.135, 0.135]) {
+      b.box(bx, 0.245, 0.135, 0.25, 0.175, 0.006, C.banner);
     }
 
-  } else {
-    // An unnamed scene is still an object rather than nothing, so a typo in
-    // MEMORIES shows up as a plain grey block instead of an empty orb.
+    // The deck, and the booth standing on it.
+    b.box(0, 0.42, -0.03, 0.80, 0.03, 0.36, C.stageWood);
+    for (const px of [-0.26, 0, 0.26]) b.box(px, 0.42, -0.03, 0.012, 0.031, 0.36, C.stageDark);
+    b.box(0, 0.45, 0.055, 0.52, 0.10, 0.02, C.stageWood);          // booth front
+    b.box(0, 0.55, -0.01, 0.54, 0.02, 0.15, C.stageDark);          // the table top
+
+    // What is on it: a controller, a couple of lit strips, a laptop behind.
+    b.box(0, 0.57, -0.02, 0.28, 0.016, 0.10, C.mixer);
+    for (let i = 0; i < 5; i++) b.box(-0.11 + i * 0.055, 0.586, -0.05, 0.018, 0.008, 0.018, C.knob);
+    g.box(-0.12, 0.586, 0.01, 0.24, 0.006, 0.012, C.ledCyan);
+    b.box(0.19, 0.57, -0.03, 0.11, 0.012, 0.08, C.metalDark);
+    b.box(0.19, 0.582, -0.065, 0.11, 0.07, 0.010, C.metalDark);    // a lid up on end
+    g.box(0.19, 0.588, -0.058, 0.095, 0.056, 0.004, 0x3f5a6b);
+
+    /* The three of them. The one in the middle in the orange jacket is the
+       reason this memory is the one on the shelf. */
+    tinyFigure(b, -0.15, 0.45, -0.13, 0.19, 0xa8794e, C.figSkin, 0);
+    tinyFigure(b, 0.005, 0.45, -0.12, 0.20, C.djOrange, C.figSkin, 0);
+    b.box(0.005, 0.45 + 0.20 * 0.90, -0.12, 0.062, 0.022, 0.058, 0x6d6a5c);   // the cap
+    b.box(0.005, 0.45 + 0.20 * 0.90, -0.095, 0.062, 0.010, 0.030, 0x6d6a5c);  // its peak
+    tinyFigure(b, 0.16, 0.45, -0.13, 0.185, 0x3a3d48, C.figSkin, 0);
+
+    // The pergola over the booth, which is what the lights are strung from.
+    for (const px of [-0.28, 0.28]) {
+      for (const pz of [-0.16, 0.12]) b.box(px, 0.45, pz, 0.020, 0.27, 0.020, C.stageWood);
+    }
+    for (const pz of [-0.16, 0.12]) b.box(0, 0.72, pz, 0.60, 0.020, 0.024, C.stageWood);
+    for (const px of [-0.28, 0.28]) b.box(px, 0.72, -0.02, 0.024, 0.020, 0.30, C.stageWood);
+
+    /* Two mirror balls on wires off the front of the deck, one warm and one
+       cold, hanging in front of the banners exactly as they do in the photo. */
+    for (const [mx, mc, md] of [[-0.115, C.discoWarm, 0.10], [0.115, C.discoCool, 0.06]]) {
+      b.box(mx, 0.30 + md, 0.185, 0.004, 0.12 - md + 0.02, 0.004, C.metalDark);
+      g.rockS(mx, 0.30 + md - 0.026, 0.185, 0.028, mc, 1, 1, 1, 1, 0, 0, 0);
+    }
+
+    // The PA, one stack each side, up on the bales.
+    for (const sx of [-0.34, 0.34]) {
+      b.box(sx, 2 * BH, 0.02, 0.11, 0.19, 0.11, C.pa);
+      b.box(sx, 2 * BH + 0.02, 0.075, 0.085, 0.14, 0.008, C.paFace);
+    }
+
+    /* The lights. Four runs of them, and they are most of what the photograph
+       is: a line behind the stage, a long one falling away to the right, one
+       along the front of the deck and one along the bales. No cord drawn
+       between them — at this size the wire is thinner than anything can be, and
+       at night you see the bulbs anyway. */
+    function run(x0, y0, z0, x1, y1, z1, n, sag) {
+      for (let i = 0; i <= n; i++) {
+        const t = i / n, dip = Math.sin(t * Math.PI) * (sag || 0);
+        g.box(x0 + (x1 - x0) * t, y0 + (y1 - y0) * t - dip, z0 + (z1 - z0) * t,
+              0.011, 0.011, 0.011, C.bulb);
+      }
+    }
+    run(-0.5, 0.40, -0.45, 0.5, 0.40, -0.45, 15, 0.06);            // behind
+    run(0.28, 0.70, 0.12, 0.52, 0.44, 0.30, 7, 0.03);              // falling away right
+    run(-0.28, 0.68, 0.12, -0.5, 0.46, 0.28, 6, 0.03);             // and left
+    run(-0.36, 0.435, 0.16, 0.36, 0.435, 0.16, 13, 0.015);         // along the deck
+    run(-0.36, 0.10, 0.155, 0.36, 0.10, 0.155, 12, 0.012);         // along the bales
+
+    // The ladder up the front of the stack.
+    for (const sx of [-0.30, -0.22]) {
+      b.boxC(sx, 0.21, 0.185, 0.014, 0.44, 0.014, C.stageWood, 0.16, 0, 0);
+    }
+    for (let i = 0; i < 5; i++) {
+      b.boxC(-0.26, 0.045 + i * 0.085, 0.199 - i * 0.014, 0.09, 0.010, 0.012, C.stageWood);
+    }
+
+    /* And the people watching, on the grass, facing it. One of them right at
+       the front with their back to you, which is where the photograph was taken
+       from. */
+    const crowd = [[-0.30, 0.30, 0.17, 0x3d4250], [-0.12, 0.36, 0.16, 0x4a3f4c],
+                   [0.10, 0.33, 0.175, 0x33404a], [0.28, 0.29, 0.16, 0x463c38],
+                   [0.02, 0.46, 0.20, 0xd4d2cb]];
+    for (const [cx, cz, ch, cc] of crowd) {
+      tinyFigure(b, cx, 0, cz, ch, cc, C.figSkin, Math.PI + (r() - 0.5) * 0.5);
+    }
+  }
+
+  if (b.empty && g.empty) {
+    /* A scene named in MEMORIES that nothing above drew is a plain grey block,
+       not an empty orb — a typo should look like a mistake rather than like
+       nothing happened. */
     b.box(0, 0, 0, 0.5, 0.3, 0.5, C.baseMid);
   }
 
@@ -3015,9 +3116,13 @@ function animMemories(group, zone) {
   const padMat = new THREE.MeshBasicMaterial({
     color: C.memBeam, transparent: true, opacity: 0, depthWrite: false
   });
+  /* The glow the memory stands on. UNDER it, not level with it: at the
+     projection's own floor it lands inside the scene's ground plate and the two
+     blend into a pale slab wider than the scene, which reads as ice. Below the
+     plate it is a halo the diorama is sitting in. */
   const pad = new THREE.Mesh(
-    new THREE.CylinderGeometry(MEM_SHOW_S * 0.56, MEM_SHOW_S * 0.56, 0.02, 16), padMat);
-  pad.position.y = MEM_SHOW_Y - 0.01;
+    new THREE.CylinderGeometry(MEM_SHOW_S * 0.62, MEM_SHOW_S * 0.62, 0.02, 16), padMat);
+  pad.position.y = MEM_SHOW_Y - 0.27;
   proj.add(pad);
 
   /* The rack, and everything that stands in it. The orbs are ITS children, not
@@ -3108,8 +3213,8 @@ function animMemories(group, zone) {
            in the world by some way: this frames from the orb in the cradle up
            past the top of it, which is the whole chain and the reason to have
            built it. */
-        zone: zone, az: 0, el: 0.16, fitH: 3.1, fitV: 3.25,
-        pos: new THREE.Vector3(0, 3.56, MEM_STAND_Z),
+        zone: zone, az: 0, el: 0.16, fitH: 3.1, fitV: 3.7,
+        pos: new THREE.Vector3(0, 4.0, MEM_STAND_Z),
         act: function () { playMemory(i); },
         actOnFocus: true, gateZone: zone, enabled: false
       };
@@ -3179,7 +3284,7 @@ function animMemories(group, zone) {
     beam.visible = show > 0.01;
     beamMat.opacity = show * 0.4;
     pad.visible = show > 0.01;
-    padMat.opacity = show * 0.45;
+    padMat.opacity = show * 0.34;
     for (let i = 0; i < orbs.length; i++) {
       const on = (i === cur) && show > 0.01;
       orbs[i].big.visible = on;
@@ -4047,6 +4152,14 @@ addZone(JAR_ZONE, 0, 0, 0, 4.8, 5.0);
 // quietly shipping as though it were finished.
 for (const def of ZONES) {
   if (def.todo) console.info("[alexparker.au] " + def.label + " — " + def.todo);
+}
+/* The same nag for the memory shelf, which is not in ZONES. An empty shelf is
+   not broken — it is a rack of dim orbs with nothing on it to play — but it is
+   unfinished, and unfinished should say so somewhere the visitor never sees. */
+if (!MEMORIES || !MEMORIES.length) {
+  console.info("[alexparker.au] The memory shelf — nothing listed yet, so the " +
+               "rack is all dim orbs and there is nothing on it to play. " +
+               "One entry in MEMORIES plus one branch in makeMemoryScene.");
 }
 
 /* =============================================================================
