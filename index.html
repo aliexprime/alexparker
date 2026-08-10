@@ -17,6 +17,26 @@
       --sheet: #fbfaf8;
     }
 
+    /* Turning the middle island over takes the whole page with it. The world
+       behind the canvas goes to the memory room's own floor, so the island
+       stops having an edge: there is no cream horizon left for it to end
+       against, and what you are looking at reads as a room rather than a slab
+       floating in daylight. The header has to come too or it vanishes into it.
+
+       Slower than the turn on purpose. The island is a second and a half going
+       over; the light around it takes a beat longer to catch up, which is what
+       makes it feel like somewhere you have arrived rather than a swapped
+       backdrop. */
+    body.deep {
+      --bg: #343744;
+      --text: #f2f4f8;
+      --muted: rgba(242, 244, 248, 0.5);
+      --muted-2: rgba(242, 244, 248, 0.28);
+      --hair: rgba(255, 255, 255, 0.12);
+    }
+    html, body { transition: background-color 1100ms ease; }
+    .brand, .count, .hint { transition: color 1100ms ease; }
+
     * { box-sizing: border-box; }
 
     html, body {

@@ -168,16 +168,19 @@ export const JAR_ZONE = {
    anger or core — the six from the film, and nothing else is a valid value.
    `scene` names the diorama built for it in world.js: the memory itself lives
    there, as actual geometry, and adding one means adding a case to
-   makeMemoryScene. `title` is lit under the projection, and leaving it empty
-   just leaves it off.
+   makeMemoryScene.
+
+   There is no title, and there should not be. Nothing in this world is labelled
+   from the outside; every scene says what it is by what is in it, and a memory
+   with a caption under it is a slide rather than a memory.
 
    These five are placeholders. They exist to show what the shelf DOES, so they
    are deliberately generic — each one is meant to be replaced by a scene built
    from a real photograph. Known scenes: beach, summit, city, campfire, stage. */
 export const MEMORIES = [
-  { scene: "beach",    tint: "joy",      title: "THE BEACH" },
-  { scene: "summit",   tint: "core",     title: "THE CLIMB" },
-  { scene: "city",     tint: "sadness",  title: "THE CITY" },
-  { scene: "campfire", tint: "disgust",  title: "THE FIRE" },
-  { scene: "stage",    tint: "anger",    title: "THE SHOW" }
+  { scene: "beach",    tint: "joy" },
+  { scene: "summit",   tint: "core" },
+  { scene: "city",     tint: "sadness" },
+  { scene: "campfire", tint: "disgust" },
+  { scene: "stage",    tint: "anger" }
 ];

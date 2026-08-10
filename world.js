@@ -156,6 +156,7 @@ const C = {
   orbGlass:   0xdceaf2,
   memFloor:   0x33384a,
   memWall:    0x2b2f3d,
+  memBase:    0x191c25,   // the edge under the memory floor, darker than it
   memRack:    0x6d6862,
   memBrass:   0xc9a24e,
   memBeam:    0xbfe6f5
@@ -544,15 +545,20 @@ function island(b, size, topColor) {
 const FLIP_HALF = 0.9;             // from the waist out to either face
 const FLIP_MID = F - FLIP_HALF;    // and where that puts the waist in the world
 
-/** Built about y = 0, to be hung on a pivot that sits at FLIP_MID. */
-function flipIsland(b, size, faceUp, faceDown) {
-  for (const s of [1, -1]) {
-    const face = s > 0 ? faceUp : faceDown;
-    b.boxC(0, s * 0.865, 0, size, 0.07, size, face);
-    b.boxC(0, s * 0.60, 0, size, 0.46, size, C.baseTop);
-    b.boxC(0, s * 0.25, 0, size - 0.8, 0.24, size - 0.8, C.baseMid);
-  }
-  b.boxC(0, 0, 0, size - 1.7, 0.26, size - 1.7, C.baseDark);
+/** One half of it, built about y = 0 for a pivot that sits at FLIP_MID. `s` is
+    which way up, and each half carries its own edge colours — the two faces are
+    two different places, and a dark room sitting on a cream island edge is a
+    room painted on a slab when the whole trick of the other side is that there
+    is no slab.
+
+    Built as two meshes, one per half, for the same reason: the cream one is
+    switched off while the memory room is up. Its walking surface faces away and
+    is never seen, but the SIDES of it are, and a band of daylight-coloured
+    island under a dark room is the one thing that gives the slab away. */
+function islandHalf(b, size, s, f) {
+  b.boxC(0, s * 0.865, 0, size, 0.07, size, f.face);
+  b.boxC(0, s * 0.60, 0, size, 0.46, size, f.wall);
+  b.boxC(0, s * 0.25, 0, size - 0.8, 0.24, size - 0.8, f.step);
 }
 
 /* ---- Shared props ---------------------------------------------------------- */
@@ -2647,8 +2653,17 @@ const RACK_PER = 7;                        // slots on one shelf
 const MEM_STAND_Z = 1.3;
 const MEM_MOUTH = { y: F + 0.96, z: -2.05 };
 const MEM_SEAT = { y: F + 0.72, z: MEM_STAND_Z };
-const MEM_SHOW_Y = F + 1.95;               // the floor a memory stands on once up
-const MEM_SHOW_S = 1.85;                   // and how big, from a unit-wide diorama
+/* Where a memory stands once it is up, and how big. MEM_SHOW_S is a multiple of
+   a unit-wide diorama, so 3.9 is three quarters of the island the room is on —
+   the memory is meant to be the biggest thing in sight, not an ornament over a
+   stand. Which is also why the ring has to go: at this size a memory does not
+   share a frame with six islands. */
+const MEM_SHOW_Y = F + 4.0;
+const MEM_SHOW_S = 3.9;
+/* And how far above the room the rack waits before it comes down. Well past the
+   top of any frame, so it arrives out of nothing rather than sliding in from
+   just off the edge. */
+const RACK_FALL = 11;
 const MEM_LEVER_X = -1.75, MEM_LEVER_Z = 1.6;      // the handle that turns it back
 
 const MEM_TINTS = {
@@ -2776,14 +2791,24 @@ function makeMemoryScene(id) {
     const towers = [[-0.34, -0.24, 0.17, 0.46], [-0.1, -0.32, 0.14, 0.62],
                     [0.14, -0.2, 0.18, 0.38], [0.36, -0.3, 0.13, 0.52],
                     [0.02, -0.05, 0.12, 0.26]];
+    /* Windows on every side, in the glow pass so they read as lit rather than
+       painted. Every side, not just the one facing out: a memory turns while it
+       is playing, and a tower lit on one face goes dark as it comes round. */
     for (const [tx, tz, tw, th] of towers) {
       b.box(tx, 0, tz, tw, th, tw * 0.9, 0x6c7691);
-      // Windows on the face you can see, in the glow pass so they read as lit.
-      for (let row = 0; row < Math.floor(th / 0.07); row++) {
-        for (let col = 0; col < 3; col++) {
-          if (r() < 0.42) continue;
-          g.box(tx - tw * 0.28 + col * tw * 0.28, 0.03 + row * 0.07, tz + tw * 0.46,
-                tw * 0.2, 0.036, 0.012, r() < 0.25 ? 0x9fd4e8 : C.ledAmber);
+      for (const [nx, nz] of [[0, 1], [1, 0], [0, -1], [-1, 0]]) {
+        const out = nx ? tw * 0.5 : tw * 0.45;      // half the box on that axis
+        const across = nx ? tw * 0.45 : tw * 0.5;   // and half the span along it
+        for (let row = 0; row < Math.floor(th / 0.07); row++) {
+          for (let col = -1; col <= 1; col++) {
+            if (r() < 0.42) continue;
+            const off = col * across * 0.56;
+            g.box(tx + nx * (out + 0.006) + (nx ? 0 : off),
+                  0.03 + row * 0.07,
+                  tz + nz * (out + 0.006) + (nz ? 0 : off),
+                  nx ? 0.012 : across * 0.4, 0.036, nz ? 0.012 : across * 0.4,
+                  r() < 0.25 ? 0x9fd4e8 : C.ledAmber);
+          }
         }
       }
     }
@@ -2846,40 +2871,15 @@ function reuseScene(src) {
   return out;
 }
 
-/** The room on the underside: the rack, the rail, the stand, and a dim orb in
-    every slot the listed memories do not take. Drawn the ordinary way up —
-    floor at F, front toward +z — because the group it goes into is turned over,
-    so this is authored as the room it becomes rather than the ceiling it is. */
-function buildMemoryRoom(b, g) {
-  const live = {};
-  for (const s of memSlots((MEMORIES || []).length)) live[s.tier + ":" + s.i] = true;
-
+/* The room on the underside, in two halves, because they arrive at different
+   times. This one is the floor of it — the rail, the stand and the lever — and
+   it is part of the island: it turns over with it and is simply there when the
+   island lands. Drawn the ordinary way up, floor at F and front toward +z,
+   because the group it goes into is turned over; so this is authored as the
+   room it becomes rather than the ceiling it spends most of its time being. */
+function buildMemoryFloor(b, g) {
+  void g;
   b.box(0, F - 0.02, 0, 5.2, 0.02, 5.2, C.memFloor);
-
-  // The wall the rack stands against, and the rack itself.
-  rackArc(b, RACK_R + 0.42, F, RACK_TIERS[0] + 0.5 - F, 0.3, C.memWall, RACK_SPREAD + 0.2, 13);
-  for (let tier = 0; tier < RACK_TIERS.length; tier++) {
-    const y = RACK_TIERS[tier];
-    rackArc(b, RACK_R, y - 0.07, 0.07, 0.62, C.memRack, RACK_SPREAD + 0.14, 13);
-    rackArc(b, RACK_R - 0.28, y, 0.05, 0.045, C.memBrass, RACK_SPREAD + 0.14, 13);   // front lip
-    for (let i = 0; i < RACK_PER; i++) {
-      if (live[tier + ":" + i]) continue;
-      const s = rackSlot(tier, i);
-      /* A slot nobody has a memory in still has an orb in it, dim. They are
-         tinted rather than grey, and they cycle rather than repeat: a rack of
-         identical grey balls reads as packaging, and the one thing a wall of
-         memories should not look like is stock. */
-      const tint = ORB_DIM[(tier * 5 + i * 3) % ORB_DIM.length];
-      g.rockS(s.x, s.y, s.z, ORB_R * 0.9, tint, 1, 1, 1, 1, 0, 0, 0);
-    }
-  }
-  // Uprights at the ends of the rack, so it is standing rather than floating.
-  for (const side of [-1, 1]) {
-    const a = side * (RACK_SPREAD + 0.16);
-    b.box(Math.sin(a) * (RACK_R + 0.1), F, RACK_CZ - Math.cos(a) * (RACK_R + 0.1),
-          0.13, RACK_TIERS[0] + 0.5 - F, 0.62, C.memRack, -a);
-  }
-
   /* The rail, drawn out of the same curve the orb rolls down, so it cannot be
      drawn anywhere the orb does not go. Two rails with a bed between them and
      the orb riding in the groove — their tops sit the sag below its centre
@@ -2918,11 +2918,52 @@ function buildMemoryRoom(b, g) {
   b.rockS(MEM_LEVER_X, F + 0.58, MEM_LEVER_Z + 0.16, 0.075, C.memJoy, 0, 1, 1, 1, 0, 0, 0);
 }
 
+/** And the rack, which is not part of the island. It is somewhere else while
+    the island is turning and comes down out of the dark once it has landed —
+    so the turn shows you an empty room with a rail in it and then the memories
+    arrive, rather than the rack riding round underneath like cargo. Drawn about
+    its resting place, and moved as a whole by whatever holds it. */
+function buildMemoryRack(b, g) {
+  const live = {};
+  for (const s of memSlots((MEMORIES || []).length)) live[s.tier + ":" + s.i] = true;
+
+  rackArc(b, RACK_R + 0.42, F, RACK_TIERS[0] + 0.5 - F, 0.3, C.memWall, RACK_SPREAD + 0.2, 13);
+  for (let tier = 0; tier < RACK_TIERS.length; tier++) {
+    const y = RACK_TIERS[tier];
+    rackArc(b, RACK_R, y - 0.07, 0.07, 0.62, C.memRack, RACK_SPREAD + 0.14, 13);
+    rackArc(b, RACK_R - 0.28, y, 0.05, 0.045, C.memBrass, RACK_SPREAD + 0.14, 13);   // front lip
+    for (let i = 0; i < RACK_PER; i++) {
+      if (live[tier + ":" + i]) continue;
+      const s = rackSlot(tier, i);
+      /* A slot nobody has a memory in still has an orb in it, dim. They are
+         tinted rather than grey, and they cycle rather than repeat: a rack of
+         identical grey balls reads as packaging, and the one thing a wall of
+         memories should not look like is stock. */
+      const tint = ORB_DIM[(tier * 5 + i * 3) % ORB_DIM.length];
+      g.rockS(s.x, s.y, s.z, ORB_R * 0.9, tint, 1, 1, 1, 1, 0, 0, 0);
+    }
+  }
+  // Uprights at the ends of the rack, so it is standing rather than floating.
+  for (const side of [-1, 1]) {
+    const a = side * (RACK_SPREAD + 0.16);
+    b.box(Math.sin(a) * (RACK_R + 0.1), F, RACK_CZ - Math.cos(a) * (RACK_R + 0.1),
+          0.13, RACK_TIERS[0] + 0.5 - F, 0.62, C.memRack, -a);
+  }
+
+}
+
 /* The animated half: the live orbs, what they carry, and the projector.
    `memoriesUp` is which face of the middle island is currently the top one, and
    a surprising amount reads it — the orbs, their hit boxes, the framing the
    island focuses to, and whether the sand is running. */
 let memoriesUp = false;
+/* Whether the island has finished turning, assigned in animHourglass. The rack
+   waits on it: it comes down onto a room that has stopped moving, not onto one
+   still rolling over. */
+let islandSettled = function () { return true; };
+/* The daylight half of the middle island, switched off while the other one is
+   up. See islandHalf for why. */
+let jarFace = null;
 
 function animMemories(group, zone) {
   const ups = [];
@@ -2946,16 +2987,29 @@ function animMemories(group, zone) {
   });
   const beamH = MEM_SHOW_Y - (MEM_SEAT.y + 0.16);
   const beam = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.7, 0.11, beamH, 12, 1, true), beamMat);
+    new THREE.CylinderGeometry(MEM_SHOW_S * 0.4, 0.12, beamH, 14, 1, true), beamMat);
   beam.position.y = MEM_SEAT.y + 0.16 + beamH / 2;
   proj.add(beam);
 
   const padMat = new THREE.MeshBasicMaterial({
     color: C.memBeam, transparent: true, opacity: 0, depthWrite: false
   });
-  const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.98, 0.98, 0.02, 14), padMat);
+  const pad = new THREE.Mesh(
+    new THREE.CylinderGeometry(MEM_SHOW_S * 0.56, MEM_SHOW_S * 0.56, 0.02, 16), padMat);
   pad.position.y = MEM_SHOW_Y - 0.01;
   proj.add(pad);
+
+  /* The rack, and everything that stands in it. The orbs are ITS children, not
+     the room's, so an orb on its shelf rides down with the rack for free and
+     nothing has to add an offset to it — and by the time one is allowed to
+     leave its slot the rack is home and its own frame is the room's again. */
+  const rack = new THREE.Group();
+  rack.visible = false;
+  group.add(rack);
+  const kb = new Builder(), kg = new Builder();
+  buildMemoryRack(kb, kg);
+  rack.add(solidMesh(kb));
+  if (!kg.empty) rack.add(glowMesh(kg));
 
   const orbs = [];
   for (let k = 0; k < list.length; k++) {
@@ -2965,7 +3019,7 @@ function animMemories(group, zone) {
 
     const orb = new THREE.Group();
     orb.position.set(slot.x, slot.y, slot.z);
-    group.add(orb);
+    rack.add(orb);
 
     // Shell, core and the memory itself, smallest thing first so the glass
     // sorts behind nothing it needs to be in front of.
@@ -2981,7 +3035,9 @@ function animMemories(group, zone) {
     orb.add(inside);
     orb.add(shell);
 
-    // The same memory again, over the stand, and its name under it.
+    // The same memory again, over the stand. Nothing written under it: every
+    // other scene in this world says what it is by what is in it, and a memory
+    // with a label on it is a slide rather than a memory.
     const big = scene;
     big.children.forEach(function (m) { m.castShadow = false; m.receiveShadow = false; });
     big.scale.setScalar(MEM_SHOW_S);
@@ -2989,16 +3045,7 @@ function animMemories(group, zone) {
     big.visible = false;
     proj.add(big);
 
-    let plate = null;
-    if (entry.title) {
-      plate = part(function (bb) {
-        textMid(bb, entry.title, 0, MEM_SHOW_Y - 0.44, 0.02, 0.028, C.memBeam);
-      }, true);
-      plate.visible = false;
-      proj.add(plate);
-    }
-
-    orbs.push({ slot: slot, orb: orb, big: big, plate: plate, t: 0, roll: 0 });
+    orbs.push({ slot: slot, orb: orb, big: big, t: 0, roll: 0 });
   }
 
   /* Which memory is at the stand, and the two eased numbers that say how far
@@ -3006,7 +3053,7 @@ function animMemories(group, zone) {
      Only one orb is ever off its shelf — a second one is held at its slot until
      the first is home, because two of them passing through each other on the
      same rail is not something a rail does. */
-  let cur = -1, show = 0;
+  let cur = -1, show = 0, rackT = 0;
 
   function playMemory(k) {
     cur = (cur === k) ? -1 : k;
@@ -3025,8 +3072,12 @@ function animMemories(group, zone) {
          was asked for is the memory playing, and that happens over the plinth
          whichever shelf it came off. */
       const d = {
-        zone: zone, az: 0, el: 0.26, fitH: 4.6, fitV: 3.4,
-        pos: new THREE.Vector3(0, 1.9, MEM_STAND_Z),
+        /* fitH and fitV are HALF-extents, and the memory is the tallest thing
+           in the world by some way: this frames from the orb in the cradle up
+           past the top of it, which is the whole chain and the reason to have
+           built it. */
+        zone: zone, az: 0, el: 0.16, fitH: 3.1, fitV: 3.25,
+        pos: new THREE.Vector3(0, 3.56, MEM_STAND_Z),
         act: function () { playMemory(i); },
         actOnFocus: true, gateZone: zone, enabled: false
       };
@@ -3038,13 +3089,25 @@ function animMemories(group, zone) {
   }
 
   ups.push(function (t, dt) {
-    // Nothing down here moves while the island has its other face up.
+    /* The rack comes down once the island has stopped turning, and goes back up
+       the moment it starts turning away — memoriesUp is set at the START of a
+       turn either way, so the rack is already climbing out while the room is
+       still rolling over. Faster up than down: arriving is the part worth
+       watching, leaving is just clearing the stage. */
+    const down = (memoriesUp && islandSettled()) ? 1 : 0;
+    rackT = clamp(rackT + (down ? dt * 1.15 : -dt * 2.2), 0, 1);
+    const e = 1 - Math.pow(1 - rackT, 3);          // fast, then settling in
+    rack.position.y = (1 - e) * RACK_FALL;
+    rack.visible = rackT > 0.001;
+
     const k = 1 - Math.pow(0.006, dt);
     const busy = orbs.some(function (o, i) { return i !== cur && o.t > 0.02; });
+    const ready = memoriesUp && rackT > 0.995;     // nothing leaves a moving rack
+    if (!ready && cur >= 0 && !memoriesUp) cur = -1;
 
     for (let i = 0; i < orbs.length; i++) {
       const o = orbs[i];
-      const to = (memoriesUp && i === cur && !busy) ? 1 : 0;
+      const to = (ready && i === cur && !busy) ? 1 : 0;
       const was = o.t;
       o.t += (to - o.t) * k;
       if (o.t < 0.0015) o.t = 0;
@@ -3074,10 +3137,10 @@ function animMemories(group, zone) {
       // axis it is travelling along.
       o.roll += (o.t - was) * (Math.abs(MEM_SEAT.z - MEM_MOUTH.z) / ORB_R) * 1.4;
       o.orb.rotation.x = o.roll;
-      o.detail.enabled = memoriesUp;
+      o.detail.enabled = ready;
     }
 
-    const wantShow = (memoriesUp && cur >= 0 && orbs[cur].t > 0.98) ? 1 : 0;
+    const wantShow = (ready && cur >= 0 && orbs[cur].t > 0.98) ? 1 : 0;
     show += (wantShow - show) * (1 - Math.pow(0.004, dt));
     if (show < 0.002) show = 0;
 
@@ -3088,7 +3151,6 @@ function animMemories(group, zone) {
     for (let i = 0; i < orbs.length; i++) {
       const on = (i === cur) && show > 0.01;
       orbs[i].big.visible = on;
-      if (orbs[i].plate) orbs[i].plate.visible = on && show > 0.6;
       if (!on) continue;
       // It grows out of the orb and turns while it stands there.
       orbs[i].big.scale.setScalar(MEM_SHOW_S * show);
@@ -3201,7 +3263,14 @@ function animHourglass(zoneGroup, def, zone) {
   const flip = new THREE.Group();
   flip.position.y = FLIP_MID;
   zoneGroup.add(flip);
-  flip.add(part(function (b) { flipIsland(b, 5.2, C.baseTop, C.memFloor); }));
+  jarFace = part(function (b) {
+    islandHalf(b, 5.2, 1, { face: C.baseTop, wall: C.baseTop, step: C.baseMid });
+  });
+  flip.add(jarFace);
+  flip.add(part(function (b) {
+    islandHalf(b, 5.2, -1, { face: C.memFloor, wall: C.memWall, step: C.memBase });
+    b.boxC(0, 0, 0, 3.5, 0.26, 3.5, C.memBase);          // the waist between them
+  }));
 
   const group = new THREE.Group();
   group.position.y = -FLIP_MID;
@@ -3212,7 +3281,7 @@ function animHourglass(zoneGroup, def, zone) {
   under.rotation.x = Math.PI;
   flip.add(under);
   const rb = new Builder(), rg = new Builder();
-  buildMemoryRoom(rb, rg);
+  buildMemoryFloor(rb, rg);
   under.add(solidMesh(rb));
   if (!rg.empty) under.add(glowMesh(rg));
   const mem = animMemories(under, zone);
@@ -3282,6 +3351,7 @@ function animHourglass(zoneGroup, def, zone) {
      you are arriving at is already live as it comes up and the orb you left
      playing rolls itself home while the island is still moving. */
   let flipFrom = 0, flipTo = 0, flipT = 1;
+  islandSettled = function () { return flipT >= 1; };
 
   turnIslandOver = function () {
     if (flipT < 1) return;                 // one turn at a time
@@ -3314,6 +3384,13 @@ function animHourglass(zoneGroup, def, zone) {
   ups.push(function () {
     jarTap.enabled = !memoriesUp && activeZone === zone;
     leverTap.enabled = memoriesUp && activeZone === zone;
+    /* Halfway through the turn, when the island is on its edge and there is
+       nothing to notice going. The hourglass goes with its own face: left on,
+       it hangs under the memory room in full daylight colours, which is the
+       other half of what gives the slab away. */
+    const showJar = deepAmt < 0.5;
+    if (jarFace) jarFace.visible = showJar;
+    group.visible = showJar;
   });
 
   const glassMat = new THREE.MeshLambertMaterial({
@@ -3478,6 +3555,23 @@ scene.background = new THREE.Color(PAPER);
    The camera sits a fixed 90 out, and the ring is about 15 across, so the
    range is set well wide of that — the effect wants to be felt, not seen. */
 scene.fog = new THREE.Fog(PAPER, 86, 200);
+
+/* How far into the memory room the whole picture has gone: 0 is the daylight
+   ring, 1 is under the island with the ring folded away and the paper behind
+   everything turned to the room's own floor.
+
+   That last part is the point of it. A dark room sitting on a cream horizon is
+   a slab with a room painted on it; take the horizon away and the floor has no
+   edge to end at, and what is left reads as somewhere you are standing. The
+   page behind the canvas goes with it — see body.deep in index.html. */
+const PAPER_COL = new THREE.Color(PAPER);
+/* Chosen by measuring, not by picking a nice blue: this is the value that comes
+   out of the renderer at what the memory room's own floor comes out at, a shade
+   lighter so the floor still has an edge to be a floor at. Matched any closer
+   and the room stops being a room; matched any less and there is a horizon
+   again, which is the one thing the other side must not have. */
+const DEEP_COL = new THREE.Color(0x272b3b);
+let deepAmt = 0, ringGone = 0;
 
 const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 240);
 
@@ -3750,6 +3844,7 @@ function addZone(def, x, z, angle, hitW, hitH) {
     baseY: 0,
     amt: 0,          // 0 asleep, 1 selected — everything animated reads this
     lift: 0,
+    away: 0,         // folded out of sight while the memory room is up
     focusAz: def.keepAz ? null : angle,
     always: !!spec.always,
     // Where this island sits in the idle cycle. Spaced by the golden ratio so
@@ -4158,7 +4253,14 @@ function pick(px, py) {
     return { detail: d, zone: d.zone };
   }
   const zh = ray.intersectObjects(pickables, false);
-  return zh.length ? { zone: zh[0].object.userData.zone } : null;
+  for (const hit of zh) {
+    // An island that has folded away under the memory room is not there to be
+    // tapped, whatever its hit box still says.
+    const z = hit.object.userData.zone;
+    if (z.away > 0.5) continue;
+    return { zone: z };
+  }
+  return null;
 }
 
 /* Nothing is labelled, so hovering has to say "this is a thing" by itself: the
@@ -4256,12 +4358,19 @@ function focusZone(zone) {
      both ends of the rack off the sides. */
   const mid = zone.def.id === "hourglass";
   const jar = mid && !memoriesUp;
-  want.fitH = jar ? 4.6 : 5.2;
-  want.fitV = jar ? 3.5 : 3.7;
+  const room = mid && memoriesUp;
+  // The room is the one scene with nothing else left in shot, so it gets to
+  // fill the frame rather than sit in the middle of it at ring distance.
+  /* The room needs more height than its own dimensions suggest. It is looked
+     at from 34 degrees up, and the rack stands two and a half units BEHIND the
+     stand — at that angle depth reads as height, and a frame cut to the rack's
+     actual top loses the whole back row off the top of the screen. */
+  want.fitH = jar ? 4.6 : (room ? 3.4 : 5.2);
+  want.fitV = jar ? 3.5 : (room ? 2.95 : 3.7);
   want.scale = 1;
   want.sx = 0;
   want.sy = 0;
-  want.target.set(zone.group.position.x, jar ? 2.1 : (mid ? 1.7 : 1.4),
+  want.target.set(zone.group.position.x, jar ? 2.1 : (room ? 2.15 : 1.4),
                   zone.group.position.z);
   startMove();
 
@@ -4618,6 +4727,23 @@ function frame(now) {
     aimSun(_aimWide, RING_HALF);
   }
 
+  /* Slower than the island's own turn. The turn is a second and a half; the
+     light around it takes a beat longer to catch up, and arriving somewhere
+     should not be over before you have registered leaving. */
+  deepAmt += ((memoriesUp ? 1 : 0) - deepAmt) * (1 - Math.pow(0.28, dt));
+  if (deepAmt < 0.001) deepAmt = 0;
+  if (deepAmt > 0.999) deepAmt = 1;
+  /* The islands go four times faster than the light does. They have to be gone
+     by the time the island lands — an ex-daylight-world still shrinking away in
+     the corner of a finished shot is a loose end — while the colour is allowed
+     to keep arriving after it. */
+  ringGone += ((memoriesUp ? 1 : 0) - ringGone) * (1 - Math.pow(0.015, dt));
+  if (ringGone < 0.001) ringGone = 0;
+  if (ringGone > 0.995) ringGone = 1;
+  scene.background.copy(PAPER_COL).lerp(DEEP_COL, deepAmt);
+  scene.fog.color.copy(scene.background);
+  document.body.classList.toggle("deep", memoriesUp);
+
   const ease = 1 - Math.pow(0.006, dt);
   for (const zone of zones) {
     const selected = activeZone === zone;
@@ -4626,7 +4752,19 @@ function frame(now) {
     // Hover floats an island, which is the only cue that it can be selected.
     const liftTo = (!activeZone && hovered === zone) ? 0.34 : (selected ? FOCUS_LIFT : 0);
     zone.lift += (liftTo - zone.lift) * ease;
-    zone.group.position.y = zone.lift;
+
+    /* The ring goes away while the middle island is the other way up. A memory
+       three quarters of an island wide does not share a frame with six of them,
+       and the room it is standing in only reads as a room if there is nothing
+       else in daylight to compare it to.
+
+       Down and away rather than switched off: they shrink toward their own
+       centres as they sink, which clears the frame in a fraction of the time
+       sinking alone would take, and going is a thing you can see happen. */
+    const away = zone.away = (zone.def.id === "hourglass") ? 0 : ringGone;
+    zone.group.position.y = zone.lift - away * 9;
+    zone.group.scale.setScalar(Math.max(0.001, 1 - away * 0.8));
+    zone.group.visible = away < 0.985;
 
     // Nothing is selected most of the time, and a still world looks broken. So
     // each island gets a turn: a slow swell that wakes whatever it animates for
