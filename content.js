@@ -150,8 +150,34 @@ export const CONTACT = {
 };
 
 /* The hourglass on the centre island — one grain of sand per visit, which is
-   where this site started. The count in the header is the same number. */
+   where this site started. The count in the header is the same number.
+
+   That island has two faces. Tap the hourglass and the whole thing turns over;
+   what is on the other side is the memory shelf below. */
 export const JAR_ZONE = {
   id: "hourglass",
   label: "The hourglass"
 };
+
+/* The memory shelf, on the underside of the centre island. One entry per orb,
+   in shelf order: they fill the bottom shelf first and work upward, and every
+   slot they do not take gets a dim orb so the rack reads as a shelf rather than
+   a display of five things.
+
+   `tint` is the colour it glows and must be one of joy, sadness, fear, disgust,
+   anger or core — the six from the film, and nothing else is a valid value.
+   `scene` names the diorama built for it in world.js: the memory itself lives
+   there, as actual geometry, and adding one means adding a case to
+   makeMemoryScene. `title` is lit under the projection, and leaving it empty
+   just leaves it off.
+
+   These five are placeholders. They exist to show what the shelf DOES, so they
+   are deliberately generic — each one is meant to be replaced by a scene built
+   from a real photograph. Known scenes: beach, summit, city, campfire, stage. */
+export const MEMORIES = [
+  { scene: "beach",    tint: "joy",      title: "THE BEACH" },
+  { scene: "summit",   tint: "core",     title: "THE CLIMB" },
+  { scene: "city",     tint: "sadness",  title: "THE CITY" },
+  { scene: "campfire", tint: "disgust",  title: "THE FIRE" },
+  { scene: "stage",    tint: "anger",    title: "THE SHOW" }
+];

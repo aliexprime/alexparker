@@ -15,7 +15,7 @@
 ============================================================================= */
 
 import * as THREE from "./vendor/three.module.min.js";
-import { ZONES, JAR_ZONE, BOARD, CHEST, CLIPBOARD, CONTACT, SCREEN, MUSIC_LINK }
+import { ZONES, JAR_ZONE, MEMORIES, BOARD, CHEST, CLIPBOARD, CONTACT, SCREEN, MUSIC_LINK }
   from "./content.js";
 
 /* ---- Palette ---------------------------------------------------------------
@@ -137,7 +137,28 @@ const C = {
 
   glass:     0xcadde4,
   sand:      0xd7ae66,
-  sandDark:  0xb9884a
+  sandDark:  0xb9884a,
+
+  /* The memory shelf on the underside of the middle island. Five glows and the
+     pale gold a core memory gets — brighter than anything else in this palette
+     on purpose, because an orb is a light rather than a painted ball, and it is
+     drawn unlit so it keeps its colour whatever the sun is doing.
+
+     The room around them is the darkest thing in the world, which is the whole
+     point of it: everything above ground is cream and daylight, and turning the
+     island over should feel like walking into somewhere else. */
+  memJoy:     0xffd45e,
+  memSad:     0x59a6e2,
+  memFear:    0xa98ce4,
+  memDisgust: 0x7fd06a,
+  memAnger:   0xe8664e,
+  memCore:    0xffeaa6,
+  orbGlass:   0xdceaf2,
+  memFloor:   0x33384a,
+  memWall:    0x2b2f3d,
+  memRack:    0x6d6862,
+  memBrass:   0xc9a24e,
+  memBeam:    0xbfe6f5
 };
 
 const BOOKS = [0xb5553f, 0x4a7a8c, 0xc9a44c, 0x6b8f5e, 0x8a6b9e, 0xc2725e,
@@ -511,6 +532,27 @@ function island(b, size, topColor) {
   b.box(0, F - 0.96, 0, size - 0.9, 0.38, size - 0.9, C.baseMid);
   b.box(0, F - 1.28, 0, size - 2.5, 0.32, size - 2.5, C.baseDark);
   b.box(0, F - 1.52, 0, size - 4.4, 0.24, size - 4.4, C.edge);
+}
+
+/* The middle island is the only one anybody ever sees the underside of, so it
+   is not an island at all — it is a slab with a top on both faces, the same
+   stepped edge mirrored about its waist. That waist is also the axis it turns
+   about, which is why the two have to be the same number: an island that
+   pivots anywhere other than its own middle rises or sinks as it goes over.
+
+   Everything in the ring keeps its ordinary base. Nothing ever looks at those. */
+const FLIP_HALF = 0.9;             // from the waist out to either face
+const FLIP_MID = F - FLIP_HALF;    // and where that puts the waist in the world
+
+/** Built about y = 0, to be hung on a pivot that sits at FLIP_MID. */
+function flipIsland(b, size, faceUp, faceDown) {
+  for (const s of [1, -1]) {
+    const face = s > 0 ? faceUp : faceDown;
+    b.boxC(0, s * 0.865, 0, size, 0.07, size, face);
+    b.boxC(0, s * 0.60, 0, size, 0.46, size, C.baseTop);
+    b.boxC(0, s * 0.25, 0, size - 0.8, 0.24, size - 0.8, C.baseMid);
+  }
+  b.boxC(0, 0, 0, size - 1.7, 0.26, size - 1.7, C.baseDark);
 }
 
 /* ---- Shared props ---------------------------------------------------------- */
@@ -2568,6 +2610,497 @@ function animAbout(group, def, zone) {
 }
 
 /* =============================================================================
+   Section: Memories
+   ---------------------------------------------------------------------------
+   The underside of the middle island. Tap the hourglass and the whole island
+   turns over; what is on the other side is a rack of memory orbs and a stand
+   to play one on. Tap an orb and it leaves its slot, runs down the rail to the
+   stand and settles into the cradle, and the memory rises out of it and stands
+   over the stand at full size.
+
+   Every orb holds a real little scene rather than a picture of one, and the
+   projection is THE SAME GEOMETRY grown large — one mesh built once, drawn
+   twice. That is worth doing rather than faking: what you can half-see through
+   the glass is then genuinely what comes up out of it, so the orbs on the shelf
+   are already telling you which memory is which before you have played any.
+
+   Each memory is one entry in MEMORIES in content.js, and each `scene` there
+   needs a case in makeMemoryScene below. That is the whole of the seam: adding
+   a memory is a line of data and a diorama.
+============================================================================= */
+
+const ORB_R = 0.26;
+
+/* The rack is an arc bowed away from the front, which is what lets three rows
+   of orbs all face the same way — the ends of a straight shelf turn edge-on and
+   the orbs out there stop reading as orbs. Slots are angles ON that arc rather
+   than positions along it, so they stay evenly spaced however many there are. */
+const RACK_CZ = 1.0, RACK_R = 3.4;         // centre and radius of the arc
+const RACK_TIERS = [F + 2.55, F + 1.85, F + 1.15];    // shelf surfaces, top down
+const RACK_SPREAD = 0.72;                  // half the arc the slots occupy
+const RACK_PER = 7;                        // slots on one shelf
+
+/* The stand out front, and the rail down to it. MEM_MOUTH is where the rail
+   starts, under the front lip of the bottom shelf; MEM_SEAT is where an orb
+   comes to rest in the cradle. The rail is drawn from the same curve the orb
+   rolls down, so it cannot be drawn anywhere the orb does not go. */
+const MEM_STAND_Z = 1.3;
+const MEM_MOUTH = { y: F + 0.96, z: -2.05 };
+const MEM_SEAT = { y: F + 0.72, z: MEM_STAND_Z };
+const MEM_SHOW_Y = F + 1.95;               // the floor a memory stands on once up
+const MEM_SHOW_S = 1.85;                   // and how big, from a unit-wide diorama
+const MEM_LEVER_X = -1.75, MEM_LEVER_Z = 1.6;      // the handle that turns it back
+
+const MEM_TINTS = {
+  joy: C.memJoy, sadness: C.memSad, fear: C.memFear,
+  disgust: C.memDisgust, anger: C.memAnger, core: C.memCore
+};
+
+/** Where the ith orb on a shelf sits, and the angle it sits at. */
+function rackSlot(tier, i) {
+  const t = RACK_PER === 1 ? 0.5 : i / (RACK_PER - 1);
+  const a = (t - 0.5) * 2 * RACK_SPREAD;
+  return {
+    x: Math.sin(a) * RACK_R,
+    y: RACK_TIERS[tier] + ORB_R,
+    z: RACK_CZ - Math.cos(a) * RACK_R,
+    a: a
+  };
+}
+
+/** Which slot each listed memory takes: the bottom shelf first, centred, then
+    upward. The bottom shelf is the one at eye level, so that is where the ones
+    worth tapping go — and every slot they do not take gets a dim orb, because a
+    rack with five things on it is a display case, not a shelf of memories. */
+function memSlots(n) {
+  const out = [];
+  const rows = Math.max(1, Math.ceil(n / RACK_PER));
+  for (let r = 0; r < rows; r++) {
+    const inRow = Math.min(RACK_PER, n - r * RACK_PER);
+    const start = Math.floor((RACK_PER - inRow) / 2);
+    const tier = Math.max(0, RACK_TIERS.length - 1 - r);
+    for (let j = 0; j < inRow; j++) out.push({ tier: tier, i: start + j });
+  }
+  return out;
+}
+
+/** A run of short boxes following the rack's arc. Boxes do not curve, so the
+    curve is made out of them, and at this segment count the facets are the
+    point rather than something to apologise for. */
+function rackArc(b, radius, y, h, depth, colour, spread, seg) {
+  const step = (2 * spread) / seg;
+  const w = 2 * radius * Math.sin(step / 2) * 1.08;   // a shade of overlap, no seams
+  for (let k = 0; k < seg; k++) {
+    const a = ((k + 0.5) / seg - 0.5) * 2 * spread;
+    b.box(Math.sin(a) * radius, y, RACK_CZ - Math.cos(a) * radius,
+          w, h, depth, colour, -a);
+  }
+}
+
+/** Where an orb is when it is `s` of the way down the rail. The drop is eased
+    so it falls away from the shelf and flattens into the cradle, which is what
+    a chute does; a straight line between the two ends reads as a ramp. */
+function railAt(s) {
+  const e = 1 - (1 - s) * (1 - s);
+  return {
+    y: MEM_MOUTH.y + (MEM_SEAT.y - MEM_MOUTH.y) * e,
+    z: MEM_MOUTH.z + (MEM_SEAT.z - MEM_MOUTH.z) * s
+  };
+}
+
+function dimTo(hex, k) {
+  return (Math.round(((hex >> 16) & 255) * k) << 16)
+       | (Math.round(((hex >> 8) & 255) * k) << 8)
+       | Math.round((hex & 255) * k);
+}
+
+/* What the slots nobody is using are filled with — the same six glows turned
+   most of the way down. They are drawn unlit like the live ones, so a dim orb
+   is genuinely a dimmer light rather than the same light in shadow. */
+const ORB_DIM = [C.memJoy, C.memSad, C.memFear, C.memDisgust, C.memAnger, C.memCore]
+  .map(function (c) { return dimTo(c, 0.36); });
+
+/* ---- The dioramas -----------------------------------------------------------
+
+   One scene per memory, built around its own origin, standing on a plate about
+   a unit across. Everything is well under AO_MIN, so nothing picks up a contact
+   skirt and the colours stay flat — which is right for something that is being
+   projected rather than lit.
+
+   These five are stand-ins. Each one is meant to be replaced by a scene built
+   from an actual photograph, which is why the shapes here are deliberately
+   simple: they are showing what the mechanism does, not what the memories are.
+*/
+
+/** A person, about a tenth of a unit tall. At this size a figure is a body, a
+    head and nothing else — legs and arms land under a pixel and only make the
+    silhouette noisy. */
+function tinyFigure(b, x, y, z, h, top, skin) {
+  b.box(x, y, z, 0.045, h * 0.62, 0.035, top);
+  b.rockS(x, y + h * 0.62 + h * 0.19, z, h * 0.2, skin, 0, 1, 1, 1, 0, 0, 0);
+}
+
+function makeMemoryScene(id) {
+  const b = new Builder(), g = new Builder();
+  const r = rng(id.length * 977 + 13);
+
+  if (id === "beach") {
+    b.box(0, -0.06, 0, 1.0, 0.06, 1.0, 0xe6d2a2);                    // sand
+    b.box(0, 0, -0.28, 1.0, 0.035, 0.44, 0x5f9fb4);                  // sea
+    b.box(0, 0.03, -0.075, 1.0, 0.018, 0.05, 0xeef3f2);              // the break
+    b.box(0.16, 0, 0.06, 0.022, 0.3, 0.022, 0xb8a88c);               // umbrella pole
+    b.cone(0.16, 0.34, 0.06, 0.2, 0.1, 8, 0xd0685a, 0, 0, 0);
+    b.box(-0.2, 0, 0.14, 0.19, 0.016, 0.25, 0xe0b552);               // towel
+    tinyFigure(b, -0.03, 0, 0.02, 0.16, 0x4f7fa8, 0xd6a97e);
+    tinyFigure(b, 0.05, 0, 0.09, 0.13, 0xd0685a, 0xd6a97e);
+    for (let i = 0; i < 5; i++) {
+      b.rockS(-0.45 + r() * 0.9, 0.005, 0.2 + r() * 0.24, 0.02 + r() * 0.015,
+              0xcbb489, 0, 1, 0.6, 1, 0, 0, 0);
+    }
+
+  } else if (id === "summit") {
+    b.box(0, -0.06, 0, 1.0, 0.06, 1.0, 0x8d8a80);
+    const peaks = [[-0.24, -0.2, 0.3, 0.46], [0.06, -0.3, 0.36, 0.6], [0.32, -0.12, 0.24, 0.34]];
+    for (const [px, pz, pr, ph] of peaks) {
+      b.cone(px, ph / 2, pz, pr, ph, 6, 0x6f6a66, 0, 0, 0);
+      b.cone(px, ph - ph * 0.16, pz, pr * 0.34, ph * 0.32, 6, 0xeceff2, 0, 0, 0);   // snow
+    }
+    for (let i = 0; i < 7; i++) {                                    // the way up
+      b.box(-0.34 + i * 0.09, 0.005, 0.36 - i * 0.035, 0.07, 0.012, 0.07, 0xa89d8c);
+    }
+    tinyFigure(b, 0.06, 0.28, -0.02, 0.15, 0xd0685a, 0xd6a97e);
+    b.box(0.04, 0.34, -0.05, 0.05, 0.055, 0.03, 0x4f7fa8);           // the pack
+
+  } else if (id === "city") {
+    b.box(0, -0.06, 0, 1.0, 0.06, 1.0, 0x4b5164);
+    const towers = [[-0.34, -0.24, 0.17, 0.46], [-0.1, -0.32, 0.14, 0.62],
+                    [0.14, -0.2, 0.18, 0.38], [0.36, -0.3, 0.13, 0.52],
+                    [0.02, -0.05, 0.12, 0.26]];
+    for (const [tx, tz, tw, th] of towers) {
+      b.box(tx, 0, tz, tw, th, tw * 0.9, 0x6c7691);
+      // Windows on the face you can see, in the glow pass so they read as lit.
+      for (let row = 0; row < Math.floor(th / 0.07); row++) {
+        for (let col = 0; col < 3; col++) {
+          if (r() < 0.42) continue;
+          g.box(tx - tw * 0.28 + col * tw * 0.28, 0.03 + row * 0.07, tz + tw * 0.46,
+                tw * 0.2, 0.036, 0.012, r() < 0.25 ? 0x9fd4e8 : C.ledAmber);
+        }
+      }
+    }
+    b.box(0, 0.005, 0.3, 1.0, 0.012, 0.2, 0x3a3f4e);                 // the road
+    for (let i = 0; i < 5; i++) g.box(-0.4 + i * 0.2, 0.018, 0.3, 0.08, 0.008, 0.02, 0xd8d2c0);
+
+  } else if (id === "campfire") {
+    b.box(0, -0.06, 0, 1.0, 0.06, 1.0, 0x5e7a4e);
+    for (const s of [-1, 1]) {                                       // the tent
+      b.boxC(-0.24 + s * 0.075, 0.11, -0.16, 0.02, 0.3, 0.34, 0xd8cdb4, 0, 0, s * 0.44);
+    }
+    b.boxC(-0.24, 0.25, -0.16, 0.03, 0.03, 0.36, 0xb8a88c);          // ridge
+    for (const [lx, lz, lr] of [[0.14, 0.16, 0.5], [0.3, -0.02, -0.9]]) {
+      b.cylC(lx, 0.03, lz, 0.03, 0.03, 0.28, 6, C.woodDark, 0, lr, Math.PI / 2);
+    }
+    b.cyl(0.22, 0, 0.06, 0.11, 0.13, 0.03, 8, 0x4a4540);             // fire ring
+    g.cone(0.22, 0.07, 0.06, 0.075, 0.14, 6, 0xf08a3c, 0, 0, 0);     // and the fire
+    g.cone(0.22, 0.13, 0.06, 0.04, 0.1, 6, 0xffd45e, 0, 0, 0);
+    tinyFigure(b, 0.06, 0, 0.2, 0.13, 0x4f7fa8, 0xd6a97e);
+    tinyFigure(b, 0.36, 0, 0.2, 0.13, 0xd0685a, 0xd6a97e);
+
+  } else if (id === "stage") {
+    b.box(0, -0.06, 0, 1.0, 0.06, 1.0, 0x3c3f4b);
+    b.box(0, 0, -0.28, 0.86, 0.09, 0.4, 0x545866);                   // the stage
+    b.box(0, 0.09, -0.46, 0.86, 0.34, 0.03, 0x2c2f39);               // backdrop
+    for (const lx of [-0.3, 0, 0.3]) {                               // three lamps
+      b.box(lx, 0.4, -0.42, 0.05, 0.05, 0.05, C.metalDark);
+      g.cone(lx, 0.26, -0.3, 0.14, 0.3, 7, 0xffe9b0, 0, 0, 0);
+    }
+    tinyFigure(b, 0, 0.09, -0.24, 0.17, 0xd0685a, 0xd6a97e);
+    for (let i = 0; i < 22; i++) {                                   // the room
+      const cx = -0.44 + r() * 0.88, cz = 0.02 + r() * 0.42;
+      b.box(cx, 0, cz, 0.045, 0.09 + r() * 0.05, 0.045, r() < 0.5 ? 0x4a5164 : 0x554a63);
+    }
+
+  } else {
+    // An unnamed scene is still an object rather than nothing, so a typo in
+    // MEMORIES shows up as a plain grey block instead of an empty orb.
+    b.box(0, 0, 0, 0.5, 0.3, 0.5, C.baseMid);
+  }
+
+  const grp = new THREE.Group();
+  if (!b.empty) grp.add(solidMesh(b));
+  if (!g.empty) grp.add(glowMesh(g));
+  return grp;
+}
+
+/** A second drawing of a scene that shares its geometry — the orb keeps one and
+    the projector gets the other, and there is only ever one of each mesh built.
+    Nothing here casts or receives: a memory being played is light, and light
+    that throws a shadow onto the shelf behind it is a solid object. */
+function reuseScene(src) {
+  const out = new THREE.Group();
+  src.children.forEach(function (m) {
+    const c = new THREE.Mesh(m.geometry, m.material);
+    c.castShadow = false;
+    c.receiveShadow = false;
+    out.add(c);
+  });
+  return out;
+}
+
+/** The room on the underside: the rack, the rail, the stand, and a dim orb in
+    every slot the listed memories do not take. Drawn the ordinary way up —
+    floor at F, front toward +z — because the group it goes into is turned over,
+    so this is authored as the room it becomes rather than the ceiling it is. */
+function buildMemoryRoom(b, g) {
+  const live = {};
+  for (const s of memSlots((MEMORIES || []).length)) live[s.tier + ":" + s.i] = true;
+
+  b.box(0, F - 0.02, 0, 5.2, 0.02, 5.2, C.memFloor);
+
+  // The wall the rack stands against, and the rack itself.
+  rackArc(b, RACK_R + 0.42, F, RACK_TIERS[0] + 0.5 - F, 0.3, C.memWall, RACK_SPREAD + 0.2, 13);
+  for (let tier = 0; tier < RACK_TIERS.length; tier++) {
+    const y = RACK_TIERS[tier];
+    rackArc(b, RACK_R, y - 0.07, 0.07, 0.62, C.memRack, RACK_SPREAD + 0.14, 13);
+    rackArc(b, RACK_R - 0.28, y, 0.05, 0.045, C.memBrass, RACK_SPREAD + 0.14, 13);   // front lip
+    for (let i = 0; i < RACK_PER; i++) {
+      if (live[tier + ":" + i]) continue;
+      const s = rackSlot(tier, i);
+      /* A slot nobody has a memory in still has an orb in it, dim. They are
+         tinted rather than grey, and they cycle rather than repeat: a rack of
+         identical grey balls reads as packaging, and the one thing a wall of
+         memories should not look like is stock. */
+      const tint = ORB_DIM[(tier * 5 + i * 3) % ORB_DIM.length];
+      g.rockS(s.x, s.y, s.z, ORB_R * 0.9, tint, 1, 1, 1, 1, 0, 0, 0);
+    }
+  }
+  // Uprights at the ends of the rack, so it is standing rather than floating.
+  for (const side of [-1, 1]) {
+    const a = side * (RACK_SPREAD + 0.16);
+    b.box(Math.sin(a) * (RACK_R + 0.1), F, RACK_CZ - Math.cos(a) * (RACK_R + 0.1),
+          0.13, RACK_TIERS[0] + 0.5 - F, 0.62, C.memRack, -a);
+  }
+
+  /* The rail, drawn out of the same curve the orb rolls down, so it cannot be
+     drawn anywhere the orb does not go. Two rails with a bed between them and
+     the orb riding in the groove — their tops sit the sag below its centre
+     rather than on the line its centre follows. */
+  const drop = Math.sqrt(ORB_R * ORB_R - 0.19 * 0.19);
+  const SEG = 26;
+  const run = MEM_SEAT.z - MEM_MOUTH.z;
+  for (let k = 0; k < SEG; k++) {
+    const p = railAt((k + 0.5) / SEG), q = railAt((k + 1.5) / SEG);
+    const lean = Math.atan2(p.y - q.y, Math.abs(q.z - p.z));
+    b.boxC(0, p.y - drop - 0.045, p.z, 0.38, 0.04, run / SEG * 1.14, C.memRack, lean, 0, 0);
+    for (const side of [-1, 1]) {
+      b.boxC(side * 0.19, p.y - drop, p.z, 0.055, 0.06, run / SEG * 1.14,
+             C.memBrass, lean, 0, 0);
+    }
+  }
+  for (let i = 1; i <= 3; i++) {                            // legs under the rail
+    const s = i / 4, p = railAt(s);
+    b.box(0, F, MEM_MOUTH.z + run * s, 0.1, p.y - drop - 0.065 - F, 0.1, C.memRack);
+  }
+
+  // The stand: a weighted base, a column, and a cup for an orb to settle into.
+  b.cyl(0, F, MEM_STAND_Z, 0.34, 0.42, 0.09, 10, C.memRack);
+  b.cyl(0, F + 0.09, MEM_STAND_Z, 0.13, 0.22, 0.3, 8, C.memRack);
+  b.cyl(0, F + 0.39, MEM_STAND_Z, 0.26, 0.14, 0.13, 10, C.memBrass);
+  b.cyl(0, F + 0.52, MEM_STAND_Z, 0.3, 0.26, 0.05, 10, C.memBrass);   // the cup lip
+
+  /* The way back up. There has to be something to tap down here, because the
+     thing that turned the island over — the hourglass — is now underneath it
+     and out of reach, and Escape only backs the camera out; it does not put
+     the island the right way up again. */
+  b.cyl(MEM_LEVER_X, F, MEM_LEVER_Z, 0.2, 0.26, 0.07, 8, C.memRack);
+  b.box(MEM_LEVER_X, F + 0.07, MEM_LEVER_Z, 0.13, 0.22, 0.13, C.memRack);
+  b.boxC(MEM_LEVER_X, F + 0.42, MEM_LEVER_Z + 0.06, 0.055, 0.36, 0.055,
+         C.memBrass, 0.34, 0, 0);
+  b.rockS(MEM_LEVER_X, F + 0.58, MEM_LEVER_Z + 0.16, 0.075, C.memJoy, 0, 1, 1, 1, 0, 0, 0);
+}
+
+/* The animated half: the live orbs, what they carry, and the projector.
+   `memoriesUp` is which face of the middle island is currently the top one, and
+   a surprising amount reads it — the orbs, their hit boxes, the framing the
+   island focuses to, and whether the sand is running. */
+let memoriesUp = false;
+
+function animMemories(group, zone) {
+  const ups = [];
+  const list = (MEMORIES || []).slice(0, RACK_PER * RACK_TIERS.length);
+  const slots = memSlots(list.length);
+
+  const glassMat = new THREE.MeshLambertMaterial({
+    color: C.orbGlass, transparent: true, opacity: 0.34,
+    depthWrite: false, side: THREE.DoubleSide
+  });
+
+  /* The projector. Everything it shows hangs off this one group so the whole
+     performance can be raised and lowered with a single number. */
+  const proj = new THREE.Group();
+  proj.position.set(0, 0, MEM_STAND_Z);
+  group.add(proj);
+
+  const beamMat = new THREE.MeshBasicMaterial({
+    color: C.memBeam, transparent: true, opacity: 0,
+    depthWrite: false, side: THREE.DoubleSide
+  });
+  const beamH = MEM_SHOW_Y - (MEM_SEAT.y + 0.16);
+  const beam = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.7, 0.11, beamH, 12, 1, true), beamMat);
+  beam.position.y = MEM_SEAT.y + 0.16 + beamH / 2;
+  proj.add(beam);
+
+  const padMat = new THREE.MeshBasicMaterial({
+    color: C.memBeam, transparent: true, opacity: 0, depthWrite: false
+  });
+  const pad = new THREE.Mesh(new THREE.CylinderGeometry(0.98, 0.98, 0.02, 14), padMat);
+  pad.position.y = MEM_SHOW_Y - 0.01;
+  proj.add(pad);
+
+  const orbs = [];
+  for (let k = 0; k < list.length; k++) {
+    const entry = list[k];
+    const slot = rackSlot(slots[k].tier, slots[k].i);
+    const tint = MEM_TINTS[entry.tint] || C.memCore;
+
+    const orb = new THREE.Group();
+    orb.position.set(slot.x, slot.y, slot.z);
+    group.add(orb);
+
+    // Shell, core and the memory itself, smallest thing first so the glass
+    // sorts behind nothing it needs to be in front of.
+    const core = new THREE.Mesh(new THREE.IcosahedronGeometry(ORB_R * 0.66, 1),
+                                new THREE.MeshBasicMaterial({ color: tint }));
+    const shell = new THREE.Mesh(new THREE.IcosahedronGeometry(ORB_R, 1), glassMat);
+
+    const scene = makeMemoryScene(entry.scene);
+    const inside = reuseScene(scene);
+    inside.scale.setScalar(ORB_R * 1.15);
+    inside.position.y = -ORB_R * 0.34;
+    orb.add(core);
+    orb.add(inside);
+    orb.add(shell);
+
+    // The same memory again, over the stand, and its name under it.
+    const big = scene;
+    big.children.forEach(function (m) { m.castShadow = false; m.receiveShadow = false; });
+    big.scale.setScalar(MEM_SHOW_S);
+    big.position.y = MEM_SHOW_Y;
+    big.visible = false;
+    proj.add(big);
+
+    let plate = null;
+    if (entry.title) {
+      plate = part(function (bb) {
+        textMid(bb, entry.title, 0, MEM_SHOW_Y - 0.44, 0.02, 0.028, C.memBeam);
+      }, true);
+      plate.visible = false;
+      proj.add(plate);
+    }
+
+    orbs.push({ slot: slot, orb: orb, big: big, plate: plate, t: 0, roll: 0 });
+  }
+
+  /* Which memory is at the stand, and the two eased numbers that say how far
+     along it is: `t` per orb for the journey down, `show` for the projection.
+     Only one orb is ever off its shelf — a second one is held at its slot until
+     the first is home, because two of them passing through each other on the
+     same rail is not something a rail does. */
+  let cur = -1, show = 0;
+
+  function playMemory(k) {
+    cur = (cur === k) ? -1 : k;
+    touched();
+  }
+  for (let k = 0; k < orbs.length; k++) {
+    (function (i) {
+      const hit = new THREE.Mesh(
+        new THREE.BoxGeometry(ORB_R * 2.3, ORB_R * 2.3, ORB_R * 2.3),
+        new THREE.MeshBasicMaterial({ visible: false })
+      );
+      orbs[i].orb.add(hit);
+      /* The hit box travels with its orb, because an orb that has rolled down
+         to the stand is still the thing you tap to put it back and its slot is
+         empty air. But where the camera GOES is the stand, not the orb: what
+         was asked for is the memory playing, and that happens over the plinth
+         whichever shelf it came off. */
+      const d = {
+        zone: zone, az: 0, el: 0.26, fitH: 4.6, fitV: 3.4,
+        pos: new THREE.Vector3(0, 1.9, MEM_STAND_Z),
+        act: function () { playMemory(i); },
+        actOnFocus: true, gateZone: zone, enabled: false
+      };
+      orbs[i].detail = d;
+      gatedDetails.push(d);
+      hit.userData.detail = d;
+      detailHits.push(hit);
+    })(k);
+  }
+
+  ups.push(function (t, dt) {
+    // Nothing down here moves while the island has its other face up.
+    const k = 1 - Math.pow(0.006, dt);
+    const busy = orbs.some(function (o, i) { return i !== cur && o.t > 0.02; });
+
+    for (let i = 0; i < orbs.length; i++) {
+      const o = orbs[i];
+      const to = (memoriesUp && i === cur && !busy) ? 1 : 0;
+      const was = o.t;
+      o.t += (to - o.t) * k;
+      if (o.t < 0.0015) o.t = 0;
+      if (o.t > 0.9985) o.t = 1;
+
+      /* The first third lifts it off the shelf and drops it onto the mouth of
+         the rail; the rest is the rail itself. Splitting it that way is what
+         makes an orb from the top shelf and one from the bottom take the same
+         route down — they meet at the mouth and roll the same curve after it. */
+      const p = o.t;
+      if (p <= 0) {
+        o.orb.position.set(o.slot.x, o.slot.y, o.slot.z);
+      } else if (p < 0.34) {
+        const s = p / 0.34;
+        const m = railAt(0);
+        o.orb.position.set(
+          o.slot.x + (0 - o.slot.x) * s,
+          o.slot.y + (m.y - o.slot.y) * s + Math.sin(s * Math.PI) * 0.16,
+          o.slot.z + (m.z - o.slot.z) * s
+        );
+      } else {
+        const s = (p - 0.34) / 0.66;
+        const m = railAt(s);
+        o.orb.position.set(0, m.y, m.z);
+      }
+      // Rolling, not sliding — the distance covered over the radius, about the
+      // axis it is travelling along.
+      o.roll += (o.t - was) * (Math.abs(MEM_SEAT.z - MEM_MOUTH.z) / ORB_R) * 1.4;
+      o.orb.rotation.x = o.roll;
+      o.detail.enabled = memoriesUp;
+    }
+
+    const wantShow = (memoriesUp && cur >= 0 && orbs[cur].t > 0.98) ? 1 : 0;
+    show += (wantShow - show) * (1 - Math.pow(0.004, dt));
+    if (show < 0.002) show = 0;
+
+    beam.visible = show > 0.01;
+    beamMat.opacity = show * 0.4;
+    pad.visible = show > 0.01;
+    padMat.opacity = show * 0.45;
+    for (let i = 0; i < orbs.length; i++) {
+      const on = (i === cur) && show > 0.01;
+      orbs[i].big.visible = on;
+      if (orbs[i].plate) orbs[i].plate.visible = on && show > 0.6;
+      if (!on) continue;
+      // It grows out of the orb and turns while it stands there.
+      orbs[i].big.scale.setScalar(MEM_SHOW_S * show);
+      orbs[i].big.position.y = MEM_SHOW_Y - (1 - show) * (MEM_SHOW_Y - MEM_SEAT.y);
+      orbs[i].big.rotation.y = t * 0.22;
+    }
+  });
+
+  return { ups: ups, clear: function () { cur = -1; } };
+}
+
+/* =============================================================================
    Section: the hourglass
    ---------------------------------------------------------------------------
    Two bulbs in a frame. The level in the lower bulb is the visitor count; the
@@ -2582,12 +3115,15 @@ const HG_BASE   = F + 0.24;                // inside floor of the lower bulb
 const HG_NECK   = HG_BASE + HG_BULB;
 const HG_TOP    = HG_NECK + HG_BULB;
 
-/* Only the island. The hourglass itself turns when you touch it, so all of it —
-   woodwork, brass and glass — is built into a group of its own in
-   animHourglass, and the ground stays put underneath it. */
+/* Nothing. Not even the ground.
+
+   Everything on this island turns: the hourglass turns itself over, and the
+   island turns over under it to show the memory room on its other face. What
+   addZone builds here goes into a mesh that never moves, so all of it — slab
+   included — is assembled in animHourglass instead, hung off the pivot it
+   turns about. */
 function buildHourglass(b, g) {
-  island(b, 5.2, C.baseTop);
-  void g;
+  void b; void g;
 }
 
 /** The frame the glass sits in, drawn around its own centre so it can spin. */
@@ -2636,6 +3172,9 @@ function topSandGeometry(frac) {
 
 let turnHourglass = null;
 let turning = false;
+/* Turning the whole island over, assigned in animHourglass. Both faces' taps
+   call this same one function — there is only ever one island to turn. */
+let turnIslandOver = null;
 
 /* How long one bulb takes to empty into the other, and how far through that it
    is. The lower level used to stand for the visitor count; the count is in the
@@ -2646,8 +3185,38 @@ const HG_LOAD = 0.94;      // how much of a bulb one load of sand fills
 let hgT = 0;
 let sandStep = -1;         // which fortieth of the run the tapers were cut for
 
-function animHourglass(group) {
+function animHourglass(zoneGroup, def, zone) {
   const ups = [];
+
+  /* The island itself, on the pivot it turns about — its own waist, because an
+     island that pivots anywhere else rises or sinks as it goes over instead of
+     simply turning. Two faces hang off it: `group` is everything above ground,
+     in ordinary world heights, and `under` is the memory room.
+
+     `under` is turned over and the room inside it is authored the right way up
+     — floor at F, front toward +z — so it is written as the room it becomes
+     rather than as the ceiling it spends most of its time being. Two rotations
+     of pi cancel: when the island is flipped, everything in there is exactly
+     where it was drawn. */
+  const flip = new THREE.Group();
+  flip.position.y = FLIP_MID;
+  zoneGroup.add(flip);
+  flip.add(part(function (b) { flipIsland(b, 5.2, C.baseTop, C.memFloor); }));
+
+  const group = new THREE.Group();
+  group.position.y = -FLIP_MID;
+  flip.add(group);
+
+  const under = new THREE.Group();
+  under.position.y = FLIP_MID;
+  under.rotation.x = Math.PI;
+  flip.add(under);
+  const rb = new Builder(), rg = new Builder();
+  buildMemoryRoom(rb, rg);
+  under.add(solidMesh(rb));
+  if (!rg.empty) under.add(glowMesh(rg));
+  const mem = animMemories(under, zone);
+  for (const u of mem.ups) ups.push(u);
 
   /* The vessel — woodwork, brass and glass — hangs off a pivot at the neck,
      which is what an hourglass actually turns about. Everything above the neck
@@ -2703,6 +3272,48 @@ function animHourglass(group) {
       vessel.position.y = HG_NECK;
       hgT = 0;                             // the sand starts its run again
     }
+  });
+
+  /* Turning the whole island over. Slower than the hourglass's own turn — this
+     is a floor going away and another one arriving, and at the hourglass's
+     pace it reads as a glitch rather than a reveal.
+
+     `memoriesUp` changes at the START of the turn, not the end, so the room
+     you are arriving at is already live as it comes up and the orb you left
+     playing rolls itself home while the island is still moving. */
+  let flipFrom = 0, flipTo = 0, flipT = 1;
+
+  turnIslandOver = function () {
+    if (flipT < 1) return;                 // one turn at a time
+    flipFrom = flip.rotation.x;
+    flipTo = flipFrom + Math.PI;
+    flipT = 0;
+    memoriesUp = !memoriesUp;
+    if (!memoriesUp) mem.clear();
+    // The two faces do not frame the same, so the camera is re-aimed rather
+    // than left pointing at where the other one used to be.
+    if (activeZone === zone) focusZone(zone);
+    touched();
+  };
+
+  ups.push(function (t, dt) {
+    if (flipT >= 1) return;
+    flipT = Math.min(1, flipT + dt * 0.55);
+    flip.rotation.x = flipFrom + (flipTo - flipFrom) * ease(flipT);
+  });
+
+  /* One target per face, and each one only exists while its own face is up.
+     Both are instant: the tap is a switch, not a place to go, and the camera
+     re-aims itself when the turn starts. */
+  const jarTap = addDetail(zone, 0, HG_NECK, 0, 1.9, 3.0, 2.5, 2.2, 0.3,
+                           function () { turnIslandOver(); }, 1.9);
+  jarTap.instant = true;
+  const leverTap = addDetail(zone, MEM_LEVER_X, F + 0.45, MEM_LEVER_Z, 0.6, 0.8,
+                             2.5, 2.2, 0.3, function () { turnIslandOver(); }, 0.5);
+  leverTap.instant = true;
+  ups.push(function () {
+    jarTap.enabled = !memoriesUp && activeZone === zone;
+    leverTap.enabled = memoriesUp && activeZone === zone;
   });
 
   const glassMat = new THREE.MeshLambertMaterial({
@@ -2778,7 +3389,11 @@ function animHourglass(group) {
     /* The run. One bulb empties into the other over HG_RUN seconds and then it
        turns itself over and goes again, which is the only thing an hourglass
        has ever done. Tapping it turns it early; either way hgT starts over. */
-    if (!turning) {
+    /* And not while the island is the other way up: sand that ran on while
+       nobody could see it would come back to a bulb that had emptied itself
+       under the floor, and an hourglass that turns itself over out of sight is
+       an hourglass measuring nothing. */
+    if (!turning && !memoriesUp) {
       hgT = Math.min(1, hgT + dt / HG_RUN);
       if (hgT >= 1) turnHourglass();
     }
@@ -3296,13 +3911,10 @@ ZONES.forEach(function (def, i) {
 });
 
 /* The hourglass is not in ZONES — it is the middle of the ring, not a part of
-   it — so its own target has to be hung on it here, outside that loop. */
-const jarZone = addZone(JAR_ZONE, 0, 0, 0, 4.8, 5.0);
-if (jarZone) {
-  // Framed wide enough that it stays in shot while it is on its side.
-  swings(addDetail(jarZone, 0, HG_NECK, 0, 1.9, 3.0, 2.5, 2.2, 0.3,
-                   function () { if (turnHourglass) turnHourglass(); }, 1.9));
-}
+   it. Its two targets are registered inside animHourglass rather than here,
+   because each of them only exists while its own face of the island is up, and
+   that is something only the thing doing the turning knows about. */
+addZone(JAR_ZONE, 0, 0, 0, 4.8, 5.0);
 
 // Placeholder copy has nowhere left to show itself, so it nags here instead of
 // quietly shipping as though it were finished.
@@ -3638,13 +4250,19 @@ function focusZone(zone) {
   // three-quarters rather than flattening into a face-on rectangle.
   if (zone.focusAz !== null) want.az = zone.focusAz + 0.34;
   want.el = portrait ? 0.68 : 0.6;
-  const small = zone.def.id === "hourglass";
-  want.fitH = small ? 4.6 : 5.2;
-  want.fitV = small ? 3.5 : 3.7;
+  /* The middle island has two faces and they do not frame the same. The
+     hourglass is one tall narrow object and wants to be met head on; the
+     memory room is a wide low room, and framed like the hourglass it loses
+     both ends of the rack off the sides. */
+  const mid = zone.def.id === "hourglass";
+  const jar = mid && !memoriesUp;
+  want.fitH = jar ? 4.6 : 5.2;
+  want.fitV = jar ? 3.5 : 3.7;
   want.scale = 1;
   want.sx = 0;
   want.sy = 0;
-  want.target.set(zone.group.position.x, small ? 2.1 : 1.4, zone.group.position.z);
+  want.target.set(zone.group.position.x, jar ? 2.1 : (mid ? 1.7 : 1.4),
+                  zone.group.position.z);
   startMove();
 
   document.body.classList.add("focused");
