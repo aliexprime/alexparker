@@ -2826,6 +2826,12 @@ function makeMemoryScene(id) {
          ... anything that should read as LIT in `g` ...
        }
 
+     A memory is the WHOLE photograph, not the subject lifted out of it: the
+     setting, the structure, the people watching, and where the shot was taken
+     from. haystage has a person at the front with their back to you for exactly
+     that reason. It costs a lot of little boxes and it is what makes the thing
+     a memory rather than a model of a thing.
+
      The rules the stand-ins taught, worth keeping:
 
      - About a unit across, standing on y = 0, front toward +z. It is scaled up

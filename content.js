@@ -166,7 +166,9 @@ export const JAR_ZONE = {
    Twenty-one slots, three shelves of seven.
 
    `tint` is the colour it glows and must be one of joy, sadness, fear, disgust,
-   anger or core — the six from the film, and nothing else is a valid value.
+   anger or core — the six from the film, and nothing else is a valid value. It
+   is read off the photograph rather than chosen from a list: a warm night gets
+   joy, and so on. Override any that feels wrong.
    `scene` names the diorama built for it in world.js: the memory itself lives
    there, as actual geometry, and adding one means adding a branch to
    makeMemoryScene. The two together are the whole seam — a line here and a
